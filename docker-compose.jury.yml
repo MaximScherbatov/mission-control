@@ -1,0 +1,81 @@
+name: citymetrics-mission-control-jury
+
+services:
+  db:
+    build:
+      context: ./infra/postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mission_control
+      POSTGRES_USER: mission
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mission-control-local-db}
+    volumes:
+      - mission_jury_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mission -d mission_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - mission_jury
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://mission:${POSTGRES_PASSWORD:-mission-control-local-db}@db:5432/mission_control
+      DB_REQUIRED: "true"
+      JWT_SECRET: ${JWT_SECRET:-mission-control-jury-local-secret-not-for-production}
+      COOKIE_SECURE: "false"
+      ALLOWED_ORIGINS: http://localhost:${APP_PORT:-8080},http://127.0.0.1:${APP_PORT:-8080}
+      DEMO_DISPATCHER_PASSWORD: ${DEMO_DISPATCHER_PASSWORD:-dispatcher}
+      DEMO_MANAGER_PASSWORD: ${DEMO_MANAGER_PASSWORD:-manager}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-admin}
+      AIRCRAFT_SOURCE: ${AIRCRAFT_SOURCE:-auto}
+      AIRCRAFT_CACHE_TTL_SECONDS: ${AIRCRAFT_CACHE_TTL_SECONDS:-}
+      AIRCRAFT_RADIUS_NM: ${AIRCRAFT_RADIUS_NM:-130}
+      READSB_URL: ${READSB_URL:-}
+      OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:-}
+      OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET:-}
+      AIRPLANES_LIVE_ENABLED: ${AIRPLANES_LIVE_ENABLED:-false}
+      DADATA_API_KEY: ${DADATA_API_KEY:-}
+      DADATA_CACHE_TTL_SECONDS: ${DADATA_CACHE_TTL_SECONDS:-86400}
+      WEATHER_CACHE_TTL_SECONDS: ${WEATHER_CACHE_TTL_SECONDS:-600}
+      RADAR_CACHE_TTL_SECONDS: ${RADAR_CACHE_TTL_SECONDS:-300}
+      RADAR_OUTPUT_PX: ${RADAR_OUTPUT_PX:-900}
+      RADAR_FRAMES: ${RADAR_FRAMES:-12}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      mission_jury:
+        aliases:
+          - mission-api
+
+  mission-control:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - mission_jury
+
+volumes:
+  mission_jury_db:
+
+networks:
+  mission_jury:
+    driver: bridge

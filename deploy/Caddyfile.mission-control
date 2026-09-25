@@ -1,0 +1,21 @@
+# Добавьте этот блок в основной Caddyfile домашнего сервера.
+# Контейнер Caddy должен быть подключён к внешней Docker-сети `web`.
+
+mission.citymetrics.moscow {
+    encode zstd gzip
+
+    reverse_proxy mission-control:80 {
+        health_uri /healthz
+        health_interval 30s
+        health_timeout 5s
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    log
+}

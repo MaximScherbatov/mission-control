@@ -1,0 +1,95 @@
+name: citymetrics-mission-control
+
+services:
+  db:
+    build:
+      context: ./infra/postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mission_control
+      POSTGRES_USER: mission
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - mission_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mission -d mission_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - mission_internal
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      APP_RELEASE: ${APP_RELEASE:-2026.09.22-replay-airspace.1}
+      DATABASE_URL: postgresql://mission:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/mission_control
+      DB_REQUIRED: "true"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://mission.citymetrics.moscow}
+      DEMO_DISPATCHER_PASSWORD: ${DEMO_DISPATCHER_PASSWORD:?Set DEMO_DISPATCHER_PASSWORD in .env}
+      DEMO_MANAGER_PASSWORD: ${DEMO_MANAGER_PASSWORD:?Set DEMO_MANAGER_PASSWORD in .env}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:?Set DEMO_ADMIN_PASSWORD in .env}
+      AIRCRAFT_SOURCE: ${AIRCRAFT_SOURCE:-auto}
+      AIRCRAFT_CACHE_TTL_SECONDS: ${AIRCRAFT_CACHE_TTL_SECONDS:-}
+      AIRCRAFT_RADIUS_NM: ${AIRCRAFT_RADIUS_NM:-130}
+      READSB_URL: ${READSB_URL:-}
+      OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:-}
+      OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET:-}
+      AIRPLANES_LIVE_ENABLED: ${AIRPLANES_LIVE_ENABLED:-false}
+      DADATA_API_KEY: ${DADATA_API_KEY:-}
+      DADATA_CACHE_TTL_SECONDS: ${DADATA_CACHE_TTL_SECONDS:-86400}
+      WEATHER_CACHE_TTL_SECONDS: ${WEATHER_CACHE_TTL_SECONDS:-600}
+      RADAR_CACHE_TTL_SECONDS: ${RADAR_CACHE_TTL_SECONDS:-300}
+      RADAR_OUTPUT_PX: ${RADAR_OUTPUT_PX:-900}
+      RADAR_FRAMES: ${RADAR_FRAMES:-12}
+      SETTLEMENT_DB_PATH: /var/lib/mission-control/settlements.sqlite
+      SETTLEMENT_BACKGROUND_SYNC: ${SETTLEMENT_BACKGROUND_SYNC:-true}
+      SETTLEMENT_BACKGROUND_BBOXES: ${SETTLEMENT_BACKGROUND_BBOXES:-36.8,55.3,38.0,56.1;19.5,54.2,22.9,55.4}
+      OVERPASS_URL: ${OVERPASS_URL:-https://overpass-api.de/api/interpreter}
+    volumes:
+      - settlement_db:/var/lib/mission-control
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      mission_internal:
+        aliases:
+          - mission-api
+      mission_egress:
+
+  mission-control:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      mission_internal:
+      web:
+        aliases:
+          - mission-control
+
+volumes:
+  mission_db:
+  settlement_db:
+
+networks:
+  mission_internal:
+    internal: true
+  mission_egress:
+  web:
+    external: true
+    name: web

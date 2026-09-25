@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env*
+!.env.example
+*.tsbuildinfo
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/app/data/*.sqlite*

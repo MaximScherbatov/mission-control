@@ -1,0 +1,12 @@
+{
+  "type": "FeatureCollection",
+  "name": "Демонстрационные высотные объекты",
+  "features": [
+    {"type":"Feature","properties":{"code":"H-001","name":"Радиомачта Яхрома","lower_limit":"GND","upper_limit":"185 м AGL","official_vertical_definition":"Высота сооружения 185 м; охранный радиус демонстрационного сценария 120 м","official_operating_schedule":"Круглосуточно"},"geometry":{"type":"Point","coordinates":[37.032,56.292]}},
+    {"type":"Feature","properties":{"code":"H-002","name":"Метеомачта Дмитров","lower_limit":"GND","upper_limit":"120 м AGL","official_vertical_definition":"Высота сооружения 120 м; охранный радиус демонстрационного сценария 80 м","official_operating_schedule":"Круглосуточно"},"geometry":{"type":"Point","coordinates":[37.245,56.224]}},
+    {"type":"Feature","properties":{"code":"H-003","name":"Дымовая труба Северная","lower_limit":"GND","upper_limit":"150 м AGL","official_vertical_definition":"Высота сооружения 150 м; охранный радиус демонстрационного сценария 100 м","official_operating_schedule":"Круглосуточно"},"geometry":{"type":"Point","coordinates":[37.414,56.292]}},
+    {"type":"Feature","properties":{"code":"H-004","name":"Ретранслятор Сергиев Посад","lower_limit":"GND","upper_limit":"210 м AGL","official_vertical_definition":"Высота сооружения 210 м; охранный радиус демонстрационного сценария 140 м","official_operating_schedule":"Круглосуточно"},"geometry":{"type":"Point","coordinates":[37.559,56.241]}},
+    {"type":"Feature","properties":{"code":"H-005","name":"Башенный кран промзоны","lower_limit":"GND","upper_limit":"92 м AGL","official_vertical_definition":"Максимальная отметка стрелы 92 м; временный объект","official_operating_schedule":"До 31.12.2026"},"geometry":{"type":"Point","coordinates":[37.472,56.171]}},
+    {"type":"Feature","properties":{"code":"H-006","name":"Водонапорная башня","lower_limit":"GND","upper_limit":"68 м AGL","official_vertical_definition":"Высота сооружения 68 м; охранный радиус демонстрационного сценария 60 м","official_operating_schedule":"Круглосуточно"},"geometry":{"type":"Point","coordinates":[36.815,56.207]}}
+  ]
+}

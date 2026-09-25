@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+dist
+backend
+docs
+*.tsbuildinfo
+*.log
+.DS_Store
