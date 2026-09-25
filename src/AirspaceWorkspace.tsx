@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from 'maplibre-gl'
 import type * as GeoJSON from 'geojson'
 import { AlertTriangle, Check, FileUp, MapPin, Plus, Search, ShieldAlert, TowerControl, Trash2, X } from 'lucide-react'
-import { installSettlementMapLayer } from './settlementMapLayer'
 
 type Category = 'prohibited' | 'danger' | 'orvd' | 'obstacle' | 'custom'
 type ZoneProperties = {
@@ -86,7 +85,7 @@ function kmlProperties(placemark:Element,index:number,coordinates:KmlCoordinate[
   }
 }
 
-function importedCollection(fileName:string,text:string):GeoJSON.FeatureCollection{
+export function importedCollection(fileName:string,text:string):GeoJSON.FeatureCollection{
   const extension=fileName.split('.').pop()?.toLowerCase()
   if(extension==='geojson'||extension==='json'){
     const value=JSON.parse(text) as GeoJSON.GeoJSON
@@ -131,7 +130,6 @@ function AirspaceMap({data,selected,onSelect,drawing,onPoint,draft}:{
   useEffect(()=>{
     if(!container.current||mapRef.current)return
     const map=new maplibregl.Map({container:container.current,style:'https://tiles.openfreemap.org/styles/liberty',center:[67,61],zoom:2.3,attributionControl:false})
-    let disposeSettlements=()=>{}
     const resizeObserver=new ResizeObserver(()=>map.resize())
     resizeObserver.observe(container.current)
     mapRef.current=map
@@ -157,7 +155,6 @@ function AirspaceMap({data,selected,onSelect,drawing,onPoint,draft}:{
       map.addLayer({id:'airspace-draft-fill',type:'fill',source:'airspace-draft',paint:{'fill-color':'#18acd5','fill-opacity':.18}})
       map.addLayer({id:'airspace-draft-line',type:'line',source:'airspace-draft',paint:{'line-color':'#0483aa','line-width':3,'line-dasharray':[2,1]}})
       map.addLayer({id:'airspace-draft-points',type:'circle',source:'airspace-draft',filter:['==',['geometry-type'],'Point'],paint:{'circle-radius':5,'circle-color':'#fff','circle-stroke-color':'#0483aa','circle-stroke-width':2}})
-      disposeSettlements=installSettlementMapLayer(map,'airspace-selected-fill')
       const pick=(event:maplibregl.MapMouseEvent)=>{
         const feature=map.queryRenderedFeatures(event.point,{layers:['airspace-obstacle-points','airspace-points','airspace-fill','airspace-orvd-fill']})[0]
         const id=feature?.properties?.id;if(id)onSelect(String(id))
@@ -168,7 +165,7 @@ function AirspaceMap({data,selected,onSelect,drawing,onPoint,draft}:{
       requestAnimationFrame(()=>map.resize())
       setReady(true)
     })
-    return()=>{resizeObserver.disconnect();disposeSettlements();selectedMarker.current?.remove();map.remove();mapRef.current=null}
+    return()=>{resizeObserver.disconnect();selectedMarker.current?.remove();map.remove();mapRef.current=null}
   },[onSelect])
   useEffect(()=>{
     const map=mapRef.current
@@ -219,11 +216,11 @@ function AirspaceMap({data,selected,onSelect,drawing,onPoint,draft}:{
   return <div ref={container} className="airspace-map"/>
 }
 
-export function AirspaceWorkspace({initialCategory='all'}:{initialCategory?:Category|'all'}={}){
+export function AirspaceWorkspace({initialCategory='all',embedded=false,searchQuery,createRequest=0,modalOnly=false,autoCreateCategory,onCreateClosed}:{initialCategory?:Category|'all'|'user';embedded?:boolean;searchQuery?:string;createRequest?:number;modalOnly?:boolean;autoCreateCategory?:Category|'settlement';onCreateClosed?:()=>void}={}){
   const [summary,setSummary]=useState<Summary|null>(null)
   const [data,setData]=useState<GeoJSON.FeatureCollection<GeoJSON.Geometry,ZoneProperties>>(emptyCollection)
   const [authorities,setAuthorities]=useState<Authority[]>([])
-  const [category,setCategory]=useState<Category|'all'>(initialCategory)
+  const [category,setCategory]=useState<Category|'all'|'user'>(initialCategory)
   const [query,setQuery]=useState('')
   const [selected,setSelected]=useState<string|null>(null)
   const [busy,setBusy]=useState(true)
@@ -232,9 +229,10 @@ export function AirspaceWorkspace({initialCategory='all'}:{initialCategory?:Cate
   const [creationMode,setCreationMode]=useState<'manual'|'import'>('manual')
   const [drawing,setDrawing]=useState(false)
   const [draft,setDraft]=useState<[number,number][]>([])
-  const [form,setForm]=useState({category:'prohibited' as Category,name:'',code:'',lower_limit:'GND',upper_limit:'',schedule:'H24',coordinates:''})
+  const [form,setForm]=useState({category:'prohibited' as Category|'settlement',name:'',code:'',lower_limit:'GND',upper_limit:'',schedule:'H24',coordinates:''})
   const fileInput=useRef<HTMLInputElement>(null)
-  const settlementFileInput=useRef<HTMLInputElement>(null)
+  const lastCreateRequest=useRef(createRequest)
+  const hadCreateDialog=useRef(false)
 
   const refresh=async()=>{
     setBusy(true)
@@ -247,16 +245,17 @@ export function AirspaceWorkspace({initialCategory='all'}:{initialCategory?:Cate
       if(authoritiesResponse.ok)setAuthorities((await authoritiesResponse.json()).items||[])
     }catch(error){setNotice(error instanceof Error?error.message:'Не удалось загрузить зоны')}finally{setBusy(false)}
   }
-  useEffect(()=>{void refresh()},[])
+  useEffect(()=>{void refresh();window.addEventListener('airspace-updated',refresh);return()=>window.removeEventListener('airspace-updated',refresh)},[])
   const visible=useMemo(()=>{
-    const needle=query.trim().toLocaleLowerCase('ru-RU')
-    return {...data,features:data.features.filter(feature=>(category==='all'||feature.properties.category===category)&&(!needle||`${feature.properties.code||''} ${feature.properties.name}`.toLocaleLowerCase('ru-RU').includes(needle)))}
-  },[data,category,query])
+    const needle=(searchQuery??query).trim().toLocaleLowerCase('ru-RU')
+    return {...data,features:data.features.filter(feature=>(category==='all'||(category==='user'?feature.properties.editable:feature.properties.category===category))&&(!needle||`${feature.properties.code||''} ${feature.properties.name}`.toLocaleLowerCase('ru-RU').includes(needle)))}
+  },[data,category,query,searchQuery])
   const selectedFeature=data.features.find(feature=>feature.properties.id===selected)
   const authority=selectedFeature?.properties.category==='orvd'?authorities.find(item=>item.zone_id===selected):undefined
 
   const importFile=async(file:File)=>{
     try{
+      if(form.category==='settlement'){await importSettlementFile(file);return}
       const collection=importedCollection(file.name,await file.text())
       const kmlObstacleSet=file.name.toLocaleLowerCase('ru-RU').includes('препятств')||collection.features.some(feature=>Boolean(feature.properties?.altitude_mode||feature.properties?.obstacle_type))
       const importCategory:Category=kmlObstacleSet?'obstacle':form.category
@@ -274,12 +273,14 @@ export function AirspaceWorkspace({initialCategory='all'}:{initialCategory?:Cate
       const response=await fetch(`/api/settlements/import?source_name=${encodeURIComponent(file.name)}`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(collection)})
       const body=await response.json().catch(()=>({}))
       if(!response.ok)throw new Error(typeof body.detail==='string'?body.detail:'Импорт границ отклонён')
+      setCreating(false)
       setNotice(`Полигоны населённых пунктов: загружено ${body.imported}, пропущено ${body.skipped}. Полнота покрытия этим импортом не подтверждается; фоновая проверка Overpass продолжится.`)
       window.dispatchEvent(new Event('settlements-updated'))
     }catch(error){setNotice(error instanceof Error?error.message:'Файл границ не удалось импортировать')}
   }
   const saveZone=async()=>{
     try{
+      if(form.category==='settlement')throw new Error('Границы населённых пунктов загружаются из GeoJSON.')
       let points=draft
       if(!drawing){points=form.coordinates.split(/\r?\n/).filter(Boolean).map((row,index)=>{const pair=row.trim().split(/[;,\s]+/).map(Number);if(pair.length<2||pair.some(value=>!Number.isFinite(value)))throw new Error(`Строка ${index+1}: нужны долгота и широта`);return [pair[0],pair[1]] as [number,number]})}
       if(points.length<3)throw new Error('Нужно не менее трёх вершин')
@@ -295,23 +296,79 @@ export function AirspaceWorkspace({initialCategory='all'}:{initialCategory?:Cate
     const response=await fetch(`/api/airspace/zones/${selectedFeature.properties.id}`,{method:'DELETE',credentials:'include'})
     if(response.ok){setSelected(null);setNotice('Пользовательская зона удалена.');await refresh();window.dispatchEvent(new Event('airspace-updated'))}else setNotice('Удаление не выполнено.')
   }
+  const openCreate=()=>{
+    setForm(value=>({...value,category:category==='all'||category==='user'?'custom':category}))
+    setCreationMode('manual')
+    setCreating(true)
+  }
+  useEffect(()=>{
+    if(createRequest===lastCreateRequest.current)return
+    lastCreateRequest.current=createRequest
+    openCreate()
+  },[createRequest])
+  useEffect(()=>{
+    if(!autoCreateCategory)return
+    setForm(value=>({...value,category:autoCreateCategory}))
+    setCreationMode(autoCreateCategory==='settlement'?'import':'manual')
+    setCreating(true)
+  },[autoCreateCategory])
+  useEffect(()=>{
+    if(creating)hadCreateDialog.current=true
+    else if(hadCreateDialog.current&&modalOnly)onCreateClosed?.()
+  },[creating,modalOnly,onCreateClosed])
 
-  return <section className="airspace-workspace" aria-label="Справочник воздушного пространства">
-    <header className="airspace-title"><div><span>БЕЗОПАСНОСТЬ И СОГЛАСОВАНИЯ</span><h1>Воздушное пространство</h1><p>Нормативные зоны, ограничения по высоте и времени, зоны ответственности ОрВД и пользовательские препятствия.</p></div><div><button onClick={()=>settlementFileInput.current?.click()} title="Загрузить полигоны населённых пунктов из QGIS GeoJSON"><FileUp size={16}/> Границы НП · GeoJSON</button><input ref={settlementFileInput} hidden type="file" accept=".geojson,.json,application/geo+json,application/json" onChange={event=>{const file=event.target.files?.[0];if(file)void importSettlementFile(file);event.currentTarget.value=''}}/><button className="primary" onClick={()=>{setCreationMode('manual');setCreating(true)}}><Plus size={17}/> Добавить</button></div></header>
-    <div className="airspace-kpis">
+  return <section className={`airspace-workspace${modalOnly?' modal-only':''}`} aria-label="Справочник воздушного пространства">
+    {!modalOnly&&!embedded&&<header className="airspace-title"><div><span>БЕЗОПАСНОСТЬ И СОГЛАСОВАНИЯ</span><h1>Воздушное пространство</h1><p>Нормативные зоны, ограничения по высоте и времени, зоны ответственности ОрВД и пользовательские препятствия.</p></div><div><button className="primary" onClick={openCreate}><Plus size={17}/> Добавить</button></div></header>}
+    {!modalOnly&&!embedded&&<div className="airspace-kpis">
       <article><ShieldAlert/><small>Запретные зоны</small><strong>{summary?.counts.prohibited??'—'}</strong><span>нормативный набор 2026</span></article>
       <article><AlertTriangle/><small>Опасные зоны</small><strong>{summary?.counts.danger??'—'}</strong><span>сведения 2022 года</span></article>
       <article><TowerControl/><small>Зоны ОрВД</small><strong>{summary?.counts.orvd??'—'}</strong><span>{authorities.filter(item=>item.contact_status==='verified').length} контактов заполнено</span></article>
       <article><MapPin/><small>Высотные объекты</small><strong>{summary?.counts.obstacle??'—'}</strong><span>препятствия и высотные ограничения</span></article>
       <article><Plus/><small>Пользовательские</small><strong>{summary?.counts.custom??'—'}</strong><span>добавлено оператором</span></article>
-    </div>
-    <div className="airspace-toolbar"><div className="airspace-filters"><button className={category==='all'?'active':''} onClick={()=>setCategory('all')}>Все <b>{summary?.total??0}</b></button>{(Object.keys(categoryMeta) as Category[]).map(id=><button key={id} className={category===id?'active':''} onClick={()=>setCategory(id)}><i style={{background:categoryMeta[id].color}}/>{categoryMeta[id].label}<b>{summary?.counts[id]??0}</b></button>)}</div><label><Search size={15}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Код или название зоны"/></label></div>
-    <div className="airspace-layout">
+    </div>}
+    {!modalOnly&&!embedded&&<div className="airspace-toolbar"><div className="airspace-filters"><button className={category==='all'?'active':''} onClick={()=>setCategory('all')}>Все <b>{summary?.total??0}</b></button>{(Object.keys(categoryMeta) as Category[]).map(id=><button key={id} className={category===id?'active':''} onClick={()=>setCategory(id)}><i style={{background:categoryMeta[id].color}}/>{categoryMeta[id].label}<b>{summary?.counts[id]??0}</b></button>)}</div><label><Search size={15}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Код или название объекта"/></label></div>}
+    {!modalOnly&&<div className="airspace-layout">
       <aside className="airspace-list"><header><strong>Объекты</strong><span>{busy?'обновление…':`${visible.features.length} показано`}</span></header><div>{visible.features.slice(0,300).map(feature=><button key={feature.properties.id} className={selected===feature.properties.id?'selected':''} onClick={()=>setSelected(feature.properties.id)}><i style={{background:categoryMeta[feature.properties.category].color}}/><span><b>{feature.properties.code||feature.properties.name}</b><small>{feature.properties.code?feature.properties.name:categoryMeta[feature.properties.category].label}</small></span></button>)}</div></aside>
       <AirspaceMap data={visible} selected={selected} onSelect={setSelected} drawing={drawing} onPoint={point=>setDraft(points=>[...points,point])} draft={draft}/>
       <aside className="airspace-detail">{selectedFeature?<><header><div><small>{categoryMeta[selectedFeature.properties.category].label.toUpperCase()}</small><h2>{selectedFeature.properties.code||selectedFeature.properties.name}</h2><p>{selectedFeature.properties.code&&selectedFeature.properties.name}</p></div><button className="airspace-detail-close" title="Снять выбор" aria-label="Снять выбор" onClick={()=>setSelected(null)}><X size={15}/><span>Закрыть</span></button></header><dl><dt>Нижняя граница</dt><dd>{selectedFeature.properties.lower_limit||selectedFeature.properties.vertical_definition||'по источнику'}</dd><dt>Верхняя граница</dt><dd>{selectedFeature.properties.upper_limit||selectedFeature.properties.vertical_definition||'по источнику'}</dd><dt>Время действия</dt><dd>{selectedFeature.properties.schedule||'по нормативному источнику'}</dd><dt>Источник</dt><dd>{selectedFeature.properties.source_name}</dd></dl>{selectedFeature.properties.category==='orvd'&&<section className={`authority-status ${authority?.contact_status||'missing'}`}><TowerControl size={18}/><div><strong>{authority?.contact_status==='verified'?'Контакт ОрВД заполнен':'Контакт требует заполнения'}</strong><small>{authority?.contact?.organization||'География ответственности загружена; контактные сведения не подменяются предположениями.'}</small></div></section>}{selectedFeature.properties.editable&&<button className="delete-zone" onClick={()=>void deleteSelected()}><Trash2 size={15}/> Удалить пользовательский объект</button>}</>:<div className="airspace-detail-empty"><MapPin size={28}/><strong>Выберите объект</strong><span>Карточка покажет высотные и временные ограничения, источник и состояние контактов ОрВД.</span></div>}</aside>
-    </div>
-    {creating&&!drawing&&<div className="airspace-modal-backdrop"><section className="airspace-modal"><header><div><span>НОВЫЙ ОБЪЕКТ СПРАВОЧНИКА</span><h2>Ограничение или препятствие</h2><p>Ручной ввод и импорт выполняются в системе координат WGS 84.</p></div><button className="airspace-modal-close" aria-label="Закрыть" onClick={()=>{setCreating(false);setDrawing(false);setDraft([])}}><X size={15}/><span>Закрыть</span></button></header><div className="airspace-create-mode"><button className={creationMode==='manual'?'active':''} onClick={()=>setCreationMode('manual')}>Ручной ввод</button><button className={creationMode==='import'?'active':''} onClick={()=>setCreationMode('import')}><FileUp size={15}/> Импорт из файла</button></div><div className="airspace-form"><label>Тип объекта<select value={form.category} onChange={event=>setForm(value=>({...value,category:event.target.value as Category}))}>{Object.entries(categoryMeta).map(([id,item])=><option key={id} value={id}>{item.label}</option>)}</select></label>{creationMode==='import'?<div className="wide airspace-import-box"><FileUp size={30}/><strong>GeoJSON, KML, GPX или CSV</strong><span>KML сохраняет отметки AGL/AMSL; незамкнутые линейные препятствия преобразуются в защитный коридор шириной 10 м.</span><button onClick={()=>fileInput.current?.click()}>Выбрать файл</button><input ref={fileInput} hidden type="file" accept=".geojson,.json,.kml,.gpx,.csv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,application/gpx+xml,text/csv" onChange={event=>{const file=event.target.files?.[0];if(file)void importFile(file);event.currentTarget.value='' }}/></div>:<><label className="wide">Название<input value={form.name} onChange={event=>setForm(value=>({...value,name:event.target.value}))}/></label><label>Код<input value={form.code} onChange={event=>setForm(value=>({...value,code:event.target.value}))}/></label><label>Нижняя граница<input value={form.lower_limit} onChange={event=>setForm(value=>({...value,lower_limit:event.target.value}))}/></label><label>Верхняя граница<input value={form.upper_limit} onChange={event=>setForm(value=>({...value,upper_limit:event.target.value}))}/></label><label className="wide">Время действия<input value={form.schedule} onChange={event=>setForm(value=>({...value,schedule:event.target.value}))}/></label><div className="wide airspace-input-mode"><button className="active">Пары координат</button><button onClick={()=>setDrawing(true)}>Рисование на карте</button></div><label className="wide">Координаты — одна пара на строку<textarea rows={7} placeholder={'37.6000, 55.7500\n37.6200, 55.7500\n37.6200, 55.7600'} value={form.coordinates} onChange={event=>setForm(value=>({...value,coordinates:event.target.value}))}/></label></>}</div><footer><span>Импортированные и созданные вручную объекты можно удалить из справочника.</span>{creationMode==='manual'&&<button disabled={!form.name.trim()} onClick={()=>void saveZone()}><Check size={16}/> Сохранить объект</button>}</footer></section></div>}
+    </div>}
+    {creating&&!drawing&&<div className="airspace-modal-backdrop">
+      <section className="airspace-modal" role="dialog" aria-modal="true" aria-label="Новый объект справочника">
+        <header>
+          <div><span>КАРТОЧКА ОБЪЕКТА</span><h2>Новый объект</h2></div>
+          <button type="button" className="airspace-modal-close" aria-label="Закрыть форму" title="Закрыть" onClick={()=>{setCreating(false);setDrawing(false);setDraft([])}}><X size={20}/></button>
+        </header>
+        <label className="airspace-object-type">Тип объекта
+          <select value={form.category} onChange={event=>{const next=event.target.value as Category|'settlement';setForm(value=>({...value,category:next}));if(next==='settlement')setCreationMode('import')}}>
+            {Object.entries(categoryMeta).map(([id,item])=><option key={id} value={id}>{item.label}</option>)}
+            <option value="settlement">Населённые пункты</option>
+          </select>
+        </label>
+        {form.category!=='settlement'&&<div className="airspace-create-mode">
+          <button type="button" className={creationMode==='manual'?'active':''} onClick={()=>setCreationMode('manual')}>Ручной ввод</button>
+          <button type="button" className={creationMode==='import'?'active':''} onClick={()=>setCreationMode('import')}><FileUp size={15}/> Импорт из файла</button>
+        </div>}
+        <div className="airspace-form">
+          {form.category==='settlement'||creationMode==='import'?<div className="wide airspace-import-box">
+            <FileUp size={28}/>
+            <strong>{form.category==='settlement'?'Границы населённых пунктов · GeoJSON':'GeoJSON, KML, GPX или CSV'}</strong>
+            <span>{form.category==='settlement'?'Загрузите FeatureCollection с полигонами из QGIS. Покрытие не считается проверенным до фоновой сверки с OSM.':'KML сохраняет высоты AGL/AMSL; линейные препятствия превращаются в защитный коридор.'}</span>
+            <button type="button" onClick={()=>fileInput.current?.click()}>Выбрать файл</button>
+            <input ref={fileInput} hidden type="file" accept={form.category==='settlement'?'.geojson,.json,application/geo+json,application/json':'.geojson,.json,.kml,.gpx,.csv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,application/gpx+xml,text/csv'} onChange={event=>{const file=event.target.files?.[0];if(file)void importFile(file);event.currentTarget.value=''}}/>
+          </div>:<>
+            <label className="airspace-field-name">Название<input value={form.name} onChange={event=>setForm(value=>({...value,name:event.target.value}))}/></label>
+            <label>Код<input value={form.code} onChange={event=>setForm(value=>({...value,code:event.target.value}))}/></label>
+            <label>Нижняя граница<input value={form.lower_limit} onChange={event=>setForm(value=>({...value,lower_limit:event.target.value}))}/></label>
+            <label>Верхняя граница<input value={form.upper_limit} onChange={event=>setForm(value=>({...value,upper_limit:event.target.value}))}/></label>
+            <label>Время действия (справочно)<input value={form.schedule} maxLength={1000} aria-describedby="airspace-schedule-hint" onChange={event=>setForm(value=>({...value,schedule:event.target.value}))}/></label>
+            <p className="wide airspace-schedule-hint" id="airspace-schedule-hint">H24 — круглосуточно. Другой режим запишите текстом, например «ПН–ПТ 09:00–18:00 МСК». Пока расчёт не разбирает эту запись и считает объект действующим постоянно.</p>
+            <div className="wide airspace-input-mode"><button type="button" className="active">Пары координат</button><button type="button" onClick={()=>setDrawing(true)}>Рисование на карте</button></div>
+            <label className="wide airspace-coordinates">Координаты — одна пара на строку<textarea rows={3} placeholder={'37.6000, 55.7500\n37.6200, 55.7500\n37.6200, 55.7600'} value={form.coordinates} onChange={event=>setForm(value=>({...value,coordinates:event.target.value}))}/></label>
+          </>}
+        </div>
+        <footer><span>{form.category==='settlement'?'Координаты WGS 84 · Импорт из QGIS не подтверждает полноту покрытия OSM.':'Координаты WGS 84 · Созданные объекты можно удалить из справочника.'}</span>{form.category!=='settlement'&&creationMode==='manual'&&<button type="button" disabled={!form.name.trim()} onClick={()=>void saveZone()}><Check size={16}/> Сохранить</button>}</footer>
+      </section>
+    </div>}
     {creating&&drawing&&<div className="airspace-drawing-bar"><MapPin size={16}/><span>Укажите вершины на карте · {draft.length} точек</span><button onClick={()=>setDraft(points=>points.slice(0,-1))}>Отменить точку</button><button onClick={()=>setDrawing(false)}>К форме</button><button className="primary" disabled={!form.name.trim()||draft.length<3} onClick={()=>void saveZone()}>Сохранить</button></div>}
     {notice&&<button className="airspace-notice" onClick={()=>setNotice('')}><Check size={15}/>{notice}</button>}
   </section>

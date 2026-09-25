@@ -928,16 +928,27 @@
 /* One geographic directory with task-specific views. */
 .objects-workspace{position:absolute;z-index:21;top:102px;bottom:18px;left:50%;width:calc(100% - 44px);max-width:1800px;transform:translateX(-50%);padding:22px;box-sizing:border-box;overflow:auto;border:1px solid #d4dde1;border-radius:18px;background:#f2f5f6f5;box-shadow:0 24px 70px rgba(35,48,55,.22);color:#20343d}
 .objects-heading span{color:#da593a;font-size:10px;font-weight:850;letter-spacing:.14em}.objects-heading h1{margin:5px 0 4px;font-size:26px}.objects-heading p{margin:0;color:#6c818a;font-size:12px}
+.objects-kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:9px;margin:18px 0 7px}
+.objects-kpis button{min-width:0;min-height:101px;padding:12px 13px;border:1px solid #d5e2e6;border-radius:11px;display:grid;grid-template-columns:24px 1fr;align-content:start;align-items:center;gap:2px 7px;color:#29404a;background:#fff;text-align:left;cursor:pointer}
+.objects-kpis button:hover{border-color:#89c9da;background:#f7fcfd}
+.objects-kpis button.active{border-color:#56b7d0;background:#ecf9fc;box-shadow:inset 0 -3px 0 #1ca6cc}
+.objects-kpis svg{grid-row:1/3;color:#169dc1}
+.objects-kpis span{overflow:hidden;font-size:11px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
+.objects-kpis strong{grid-column:2;font-size:23px;line-height:1.1}
+.objects-kpis small{grid-column:1/-1;overflow:hidden;margin-top:5px;color:#7b9098;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
 .objects-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:16px 0 13px;border-bottom:1px solid #d7e1e4}.objects-tabs button{min-height:38px;padding:0 12px;border:1px solid transparent;border-radius:8px;display:inline-flex;align-items:center;gap:7px;color:#607780;background:transparent;font-size:12px;font-weight:700;cursor:pointer}.objects-tabs button:hover{background:#e6f1f4}.objects-tabs button.active{border-color:#a9d8e5;color:#126e87;background:#e9f7fb;box-shadow:inset 0 -2px 0 #1ca6cc}
 .objects-workspace>.airspace-workspace,.objects-workspace>.launch-sites-workspace{position:relative;z-index:auto;inset:auto;top:auto;bottom:auto;left:auto;right:auto;width:100%;max-width:none;transform:none;margin:0;padding:13px 0 0;border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
 .objects-workspace .airspace-title>div:first-child,.objects-workspace .launch-sites-workspace>header>div{display:none}
 .objects-workspace .airspace-title,.objects-workspace .launch-sites-workspace>header{min-height:44px;justify-content:flex-end}
-.objects-workspace .airspace-layout,.objects-workspace .launch-sites-layout{height:calc(100vh - 315px);min-height:480px}
+.objects-workspace .airspace-layout,.objects-workspace .launch-sites-layout{height:calc(100vh - 420px);min-height:480px}
 .objects-overview{padding:24px 4px}.objects-overview h2{margin:0 0 7px;font-size:20px}.objects-overview p{max-width:730px;margin:0;color:#687d85;font-size:13px;line-height:1.5}.objects-overview-links{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:22px}.objects-overview-links button{min-height:105px;padding:16px;border:1px solid #d5e2e6;border-radius:11px;display:grid;align-content:space-between;justify-items:start;color:#267e97;background:#fff;text-align:left;cursor:pointer}.objects-overview-links button strong{color:#203b45;font-size:14px}.objects-overview-links button span{color:#66818a;font-size:11px}
 .settlement-directory-toolbar{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:14px 0 10px}.settlement-directory-toolbar label{width:min(330px,45%);height:38px;padding:0 10px;border:1px solid #cbd9dd;border-radius:8px;display:flex;align-items:center;gap:8px;background:#fff}.settlement-directory-toolbar input{width:100%;border:0;outline:0;color:#20343d;background:transparent;font:12px inherit}.settlement-directory-toolbar>span{color:#6a8088;font-size:11px}
-.settlement-directory-layout{height:calc(100vh - 286px);min-height:480px;display:grid;grid-template-columns:260px minmax(350px,1fr) 290px;border:1px solid #d6e1e4;border-radius:12px;overflow:hidden;background:#fff}.settlement-directory-list{min-height:0;display:flex;flex-direction:column;border-right:1px solid #dce5e8;background:#f9fbfb}.settlement-directory-list header{padding:13px 14px;border-bottom:1px solid #dce5e8;display:flex;justify-content:space-between;gap:8px}.settlement-directory-list header strong{font-size:13px}.settlement-directory-list header small{color:#778991;font-size:11px}.settlement-directory-list>div{overflow:auto}.settlement-directory-list button{width:100%;padding:11px 13px;border:0;border-bottom:1px solid #e7edef;display:flex;align-items:flex-start;gap:9px;background:transparent;text-align:left;cursor:pointer}.settlement-directory-list button:hover,.settlement-directory-list button.selected{background:#e9f5f8}.settlement-directory-list button i{flex:none;width:8px;height:8px;margin-top:4px;border-radius:50%;background:#a3326d}.settlement-directory-list button span{min-width:0;display:grid;gap:3px}.settlement-directory-list button b{overflow:hidden;color:#2d424b;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.settlement-directory-list button small{overflow:hidden;color:#71858d;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.settlement-directory-map{min-width:0;height:100%}.settlement-directory-detail{min-width:0;padding:19px;overflow:auto;border-left:1px solid #dce5e8}.settlement-directory-detail header small{color:#1986a4;font-size:10px;font-weight:850;letter-spacing:.12em}.settlement-directory-detail h2{margin:7px 0;font-size:20px}.settlement-directory-detail header p{margin:0;color:#779099;font-size:12px}.settlement-directory-detail h3{margin:22px 0 8px;font-size:13px}.settlement-directory-detail dl{display:grid;grid-template-columns:110px 1fr;gap:9px;margin:0}.settlement-directory-detail dt{color:#70858d;font-size:11px}.settlement-directory-detail dd{margin:0;color:#29434e;font-size:12px;font-weight:700}.settlement-directory-detail p{font-size:12px}.settlement-directory-detail>small{color:#84979e;font-size:11px}.settlement-directory-empty{height:100%;display:grid;place-content:center;justify-items:center;gap:8px;color:#758b94;text-align:center}.settlement-directory-empty strong{color:#3c5761;font-size:14px}.settlement-directory-empty span{max-width:225px;font-size:12px;line-height:1.45}
-@media(max-width:1050px){.objects-overview-links{grid-template-columns:repeat(2,minmax(0,1fr))}.settlement-directory-layout{grid-template-columns:220px minmax(260px,1fr)}.settlement-directory-detail{display:none}}
+.settlement-directory-layout{height:calc(100vh - 240px);min-height:480px;display:grid;grid-template-columns:260px minmax(350px,1fr) 290px;border:1px solid #d6e1e4;border-radius:12px;overflow:hidden;background:#fff}.settlement-directory-list{min-height:0;display:flex;flex-direction:column;border-right:1px solid #dce5e8;background:#f9fbfb}.settlement-directory-list header{padding:13px 14px;border-bottom:1px solid #dce5e8;display:flex;justify-content:space-between;gap:8px}.settlement-directory-list header strong{font-size:13px}.settlement-directory-list header small{color:#778991;font-size:11px}.settlement-directory-list>div{overflow:auto}.settlement-directory-list button{width:100%;padding:11px 13px;border:0;border-bottom:1px solid #e7edef;display:flex;align-items:flex-start;gap:9px;background:transparent;text-align:left;cursor:pointer}.settlement-directory-list button:hover,.settlement-directory-list button.selected{background:#e9f5f8}.settlement-directory-list button i{flex:none;width:8px;height:8px;margin-top:4px;border-radius:50%;background:#a3326d}.settlement-directory-list button span{min-width:0;display:grid;gap:3px}.settlement-directory-list button b{overflow:hidden;color:#2d424b;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.settlement-directory-list button small{overflow:hidden;color:#71858d;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.settlement-directory-map{min-width:0;height:100%}.settlement-directory-detail{min-width:0;padding:19px;overflow:auto;border-left:1px solid #dce5e8}.settlement-directory-detail header small{color:#1986a4;font-size:10px;font-weight:850;letter-spacing:.12em}.settlement-directory-detail h2{margin:7px 0;font-size:20px}.settlement-directory-detail header p{margin:0;color:#779099;font-size:12px}.settlement-directory-detail h3{margin:22px 0 8px;font-size:13px}.settlement-directory-detail dl{display:grid;grid-template-columns:110px 1fr;gap:9px;margin:0}.settlement-directory-detail dt{color:#70858d;font-size:11px}.settlement-directory-detail dd{margin:0;color:#29434e;font-size:12px;font-weight:700}.settlement-directory-detail p{font-size:12px}.settlement-directory-detail>small{color:#84979e;font-size:11px}.settlement-directory-empty{height:100%;display:grid;place-content:center;justify-items:center;gap:8px;color:#758b94;text-align:center}.settlement-directory-empty strong{color:#3c5761;font-size:14px}.settlement-directory-empty span{max-width:225px;font-size:12px;line-height:1.45}
+.objects-workspace .settlement-directory-layout{height:calc(100vh - 390px)}
+@media(max-width:1450px){.objects-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1050px){.objects-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.objects-overview-links{grid-template-columns:repeat(2,minmax(0,1fr))}.settlement-directory-layout{grid-template-columns:220px minmax(260px,1fr)}.settlement-directory-detail{display:none}}
 @media(max-width:700px){.objects-workspace{top:82px;bottom:0;width:100%;padding:14px;border-radius:0}.objects-heading h1{font-size:21px}.objects-tabs{flex-wrap:nowrap;overflow:auto}.objects-tabs button{flex:none}.settlement-directory-layout{grid-template-columns:1fr;height:auto;min-height:0}.settlement-directory-list{max-height:180px}.settlement-directory-map{height:420px}}
+@media(max-width:700px){.objects-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.objects-workspace .settlement-directory-layout{height:auto}}
 .login-schematic{position:absolute;width:min(90vw,1150px);height:auto;opacity:.15;pointer-events:none}.login-schematic path,.login-schematic circle{fill:none;stroke:#167c9c;stroke-width:2}.login-schematic .schematic-area{fill:#5bc4dc;stroke-width:4}.login-schematic .schematic-route{stroke:#f1843f;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}.login-schematic .schematic-transit{stroke-dasharray:9 9;stroke-width:3}.login-schematic .schematic-base,.login-schematic .schematic-uav{fill:#217f9c;stroke:#fff;stroke-width:4}.login-schematic .schematic-restricted{fill:#eb7163;stroke:#c84d45;stroke-dasharray:10 7}.login-schematic .schematic-runway{stroke:#fff;stroke-width:5}.login-schematic .schematic-signal{stroke-width:2}
 .login-side-note{grid-template-columns:25px minmax(175px,210px);gap:15px 10px}.login-side-note p{display:grid;gap:3px;font-size:11px;letter-spacing:0;text-transform:none}.login-side-note p strong{color:#405661;font-size:12px}.login-side-note p small{color:#7d9199;font-size:10px}.login-side-note>em{grid-column:1/-1;max-width:255px;margin-top:8px;color:#7d9199;font-size:10px;font-style:normal;line-height:1.4}
 .settlement-directory-detail header p{text-transform:capitalize}
@@ -1075,8 +1086,8 @@
 .weather-condition>span{font-size:28px;line-height:29px}
 .weather-condition small{line-height:9px}
 .base-popup em{color:#09212b;background:#75d3eb}
-.base-schedule>span.landing strong{color:#8cdcf3}
-.base-schedule>span.takeoff strong{color:#ffcb81}
+.base-schedule>span.landing strong{color:#f6a6cf}
+.base-schedule>span.takeoff strong{color:#8cdcf3}
 
 /* Aerial landscape is the sign-in backdrop; the form remains the clear focal point. */
 .login-layer{display:flex;align-items:safe center;justify-content:center;padding:clamp(20px,6vw,100px);overflow:auto;background:linear-gradient(90deg,rgba(8,26,31,.35),rgba(8,26,31,.07) 58%,rgba(8,26,31,.02)),url('/login-aerial-landscape.png') center center/cover no-repeat;backdrop-filter:none}
@@ -1097,3 +1108,122 @@
 .sensor-altitude-details>label input{width:100%;accent-color:#2bbce0}
 .sensor-altitude-details>small{display:block;padding:0 10px 10px;color:#98adb4;font-size:8px;line-height:1.4}
 @media(max-width:600px){.login-layer{justify-content:center;padding:14px;background-position:59% center}.login-shell{width:min(460px,100%);border-radius:16px}.login-shell .login-card.glass-panel{padding:30px 25px;min-height:570px}.login-shell .login-copy{margin:50px 0 30px}.login-shell .login-copy h2{font-size:28px}}
+
+/* The object directory uses one colour-coded selector and keeps the map in the viewport. */
+.objects-kpis button{border-color:color-mix(in srgb,var(--object-color) 27%,#d5e2e6);background:color-mix(in srgb,var(--object-color) 4%,#fff)}
+.objects-kpis button:hover{border-color:var(--object-color);background:color-mix(in srgb,var(--object-color) 9%,#fff)}
+.objects-kpis button.active{border-color:var(--object-color);background:color-mix(in srgb,var(--object-color) 13%,#fff);box-shadow:inset 0 -3px 0 var(--object-color)}
+.objects-kpis button svg,.objects-kpis button strong{color:var(--object-color)}
+@media(min-width:1151px){.objects-kpis{grid-template-columns:repeat(7,minmax(0,1fr))}}
+@media(min-width:901px){
+  .objects-workspace{display:flex;flex-direction:column;overflow:hidden}
+  .objects-heading,.objects-kpis{flex:none}
+  .objects-workspace>.airspace-workspace,.objects-workspace>.launch-sites-workspace{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .objects-workspace .airspace-layout,.objects-workspace .launch-sites-layout{flex:1;height:auto;min-height:0}
+  .objects-workspace .airspace-map{min-height:0}
+  .objects-workspace>.settlement-directory{flex:1;min-height:0;display:flex;flex-direction:column}
+  .objects-workspace .settlement-directory-layout{flex:1;height:auto;min-height:0}
+}
+.objects-workspace .airspace-toolbar{justify-content:space-between;padding:0;border:0;background:transparent}
+.objects-workspace .airspace-toolbar>label{flex:1;width:auto;max-width:none;height:38px;margin:0;font-size:12px}
+.objects-workspace .airspace-toolbar input{font-family:inherit;font-size:12px}
+.objects-workspace .launch-sites-workspace{position:relative}
+.objects-workspace .launch-sites-workspace>header{position:absolute;top:12px;right:0;z-index:1;min-height:0;height:38px}
+.objects-workspace .launch-sites-toolbar{min-height:38px;margin:0 0 10px;padding-right:155px}
+.objects-workspace .launch-sites-toolbar label{width:min(420px,55%)}
+.objects-workspace .settlement-directory-toolbar{min-height:38px;margin:12px 0 10px}
+.objects-workspace .settlement-directory-toolbar label{width:min(420px,55%)}
+.airspace-add-button{height:38px;padding:0 13px;border:1px solid #168fb4;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:7px;color:#fff;background:#168fb4;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer}
+.airspace-add-button:hover{background:#117c9d}
+
+/* Stable directory controls: category selection never moves search or creation. */
+.objects-overview-row{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));align-items:stretch;gap:7px;margin:14px 0 10px;flex:none}
+.objects-overview-row .objects-kpis{grid-column:1/span 7;min-width:0;margin:0;gap:7px;grid-template-columns:repeat(7,minmax(0,1fr))}
+.objects-overview-row .objects-kpis button{height:78px;min-height:78px;padding:6px 8px;box-sizing:border-box;grid-template-columns:17px 1fr;align-content:start;gap:1px 5px;overflow:hidden}
+.objects-overview-row .objects-kpis svg{width:16px;height:16px}
+.objects-overview-row .objects-kpis span{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;font-size:14px;line-height:1.02;white-space:normal}
+.objects-overview-row .objects-kpis strong{font-size:21px;line-height:1}
+.objects-overview-row .objects-kpis small{margin-top:2px;font-size:11px;line-height:1.05;white-space:nowrap;text-overflow:ellipsis}
+.objects-create-button{grid-column:8;min-width:0;height:78px;min-height:78px;padding:8px;border:1px solid #168fb4;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:#fff;background:#168fb4;font-size:14px;font-weight:750;white-space:nowrap;cursor:pointer}
+.objects-create-button:hover{background:#117c9d}
+.objects-search{height:38px;min-height:38px;margin-bottom:10px;padding:0 11px;border:1px solid #cbd9dd;border-radius:8px;box-sizing:border-box;display:flex;align-items:center;gap:8px;color:#8198a1;background:#fff;flex:none}
+.objects-search:focus-within{border-color:#31a9c8;box-shadow:0 0 0 2px #31a9c822}
+.objects-search input{width:100%;border:0;outline:0;color:#20343d;background:transparent;font:12px inherit}
+.objects-workspace>.airspace-workspace,.objects-workspace>.launch-sites-workspace{padding-top:0}
+.objects-workspace .launch-sites-workspace>header,.objects-workspace .launch-sites-toolbar{display:none}
+.objects-workspace>.airspace-workspace.modal-only{position:static;width:0;height:0;min-height:0;padding:0;flex:none;overflow:visible}
+@media(max-width:1050px){.objects-overview-row{grid-template-columns:repeat(4,minmax(0,1fr))}.objects-overview-row .objects-kpis{grid-column:1/-1;grid-template-columns:repeat(4,minmax(0,1fr))}.objects-create-button{grid-column:4}}
+@media(max-width:700px){.objects-overview-row{grid-template-columns:repeat(2,minmax(0,1fr))}.objects-overview-row .objects-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.objects-create-button{grid-column:2}}
+
+/* Compact form: the close control, typography and fields match the other service dialogs. */
+.airspace-modal-backdrop{padding:12px}
+.airspace-modal{width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:20px;overflow:hidden;display:flex;flex-direction:column;font-family:"Segoe UI Variable","Aptos","Segoe UI",sans-serif}
+.airspace-modal>header{flex:none;align-items:flex-start}
+.airspace-modal>header span{font-size:10px}
+.airspace-modal>header h2{margin:4px 0 2px;font-size:21px;line-height:1.15}
+.airspace-modal>header p{font-size:11px}
+.airspace-modal>header>button.airspace-modal-close{flex:none;width:34px;height:34px;padding:0;border:1px solid #cbd8dc;border-radius:8px;display:grid;place-items:center;color:#3d5964;background:#fff}
+.airspace-modal>header>button.airspace-modal-close:hover{border-color:#8fb9c5;background:#edf6f8}
+.airspace-object-type{flex:none;margin-top:12px;display:grid;gap:5px;color:#60757e;font-size:10px;font-weight:700}
+.airspace-object-type select,.airspace-form input,.airspace-form select,.airspace-form textarea{width:100%;min-width:0;padding:7px 9px;border:1px solid #c8d6da;border-radius:7px;box-sizing:border-box;color:#20343d;background:#fff;font-family:inherit;font-size:12px;font-weight:400}
+.airspace-object-type select,.airspace-form input{height:36px}
+.airspace-create-mode{flex:none;margin:10px 0 0}
+.airspace-create-mode button{height:32px;font-family:inherit;font-size:11px;font-weight:650}
+.airspace-form{min-height:0;margin-top:10px;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px}
+.airspace-form label{gap:4px;font-size:10px}
+.airspace-form .airspace-field-name{grid-column:span 2}
+.airspace-form .airspace-schedule-hint{grid-column:1/-1;margin:-2px 0 0;padding:7px 9px;border-left:2px solid #27a7c8;border-radius:0 6px 6px 0;color:#4d6873;background:#edf7fa;font-size:10px;line-height:1.35}
+.airspace-form .airspace-coordinates textarea{height:82px;min-height:82px;resize:none;line-height:1.35}
+.airspace-input-mode button{height:30px;font-family:inherit;font-size:11px}
+.airspace-import-box{min-height:160px;padding:18px;gap:7px}
+.airspace-import-box strong{font-size:13px}
+.airspace-import-box span{font-size:11px;line-height:1.45}
+.airspace-import-box button{margin-top:2px;padding:8px 12px;font-family:inherit;font-size:11px;font-weight:700}
+.airspace-modal>footer{flex:none;margin-top:12px;padding-top:10px;border-top:1px solid #d9e3e6}
+.airspace-modal>footer span{font-size:10px;line-height:1.4}
+.airspace-modal>footer button{height:36px;padding:0 13px;font-family:inherit;font-size:11px;font-weight:700;white-space:nowrap}
+@media(max-width:700px){.airspace-modal{overflow:auto}.airspace-form{grid-template-columns:1fr 1fr}.airspace-form .airspace-field-name{grid-column:1/-1}}
+
+/* Every add-object variant uses the launch-site card as its visual template. */
+:is(.airspace-modal-backdrop,.launch-site-modal-backdrop){padding:12px;background:rgba(17,27,32,.62);backdrop-filter:blur(6px)}
+:is(.airspace-modal,.launch-site-modal){width:min(720px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:21px;box-sizing:border-box;overflow:auto;border:0;border-radius:15px;display:flex;flex-direction:column;color:#20343d;background:#f5f8f9;box-shadow:0 30px 90px rgba(10,20,25,.5);font-family:"Segoe UI Variable","Aptos","Segoe UI",sans-serif}
+:is(.airspace-modal,.launch-site-modal)>header{flex:none;align-items:flex-start;justify-content:space-between;gap:16px}
+:is(.airspace-modal,.launch-site-modal)>header span{color:#de5939;font-size:9px;font-weight:850;letter-spacing:.14em}
+:is(.airspace-modal,.launch-site-modal)>header h2{margin:5px 0 0;font-size:22px;line-height:1.15}
+:is(.airspace-modal,.launch-site-modal)>header>button:is(.airspace-modal-close,.launch-site-modal-close){flex:none;width:42px;height:42px;padding:0;border:1px solid #c8d8de;border-radius:10px;display:grid;place-items:center;color:#2c4651;background:#fff;cursor:pointer}
+:is(.airspace-modal,.launch-site-modal)>header>button:is(.airspace-modal-close,.launch-site-modal-close):hover{border-color:#91b6c2;background:#eaf3f6}
+:is(.airspace-modal,.launch-site-modal)>header>button:is(.airspace-modal-close,.launch-site-modal-close):focus-visible{outline:2px solid #168fa9;outline-offset:2px}
+.airspace-object-type{margin-top:14px;gap:5px;color:#617780;font-size:10px;font-weight:400}
+.airspace-create-mode{margin-top:10px}
+.airspace-create-mode button{height:36px;font-size:11px}
+.airspace-form{margin-top:12px;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.airspace-form label,.launch-site-form>label{gap:4px;color:#617780;font-size:10px;font-weight:400}
+.airspace-form .airspace-field-name{grid-column:1/-1}
+:is(.airspace-object-type select,.airspace-form input,.airspace-form textarea,.launch-site-form input,.launch-site-form select,.launch-site-form textarea){width:100%;min-width:0;padding:8px 10px;border:1px solid #cad7db;border-radius:7px;box-sizing:border-box;color:#20343d;background:#fff;font-family:inherit;font-size:11px;font-weight:400}
+:is(.airspace-object-type select,.airspace-form input,.launch-site-form input,.launch-site-form select){height:36px}
+.airspace-form .airspace-coordinates textarea{height:82px}
+.airspace-form .airspace-schedule-hint{font-size:10px}
+:is(.airspace-modal,.launch-site-modal)>footer{flex:none;margin-top:14px;padding-top:12px;border-top:1px solid #d9e3e6;display:flex;align-items:center;justify-content:space-between;gap:15px}
+:is(.airspace-modal,.launch-site-modal)>footer span{color:#6e838b;font-size:9px;line-height:1.4}
+:is(.airspace-modal,.launch-site-modal)>footer button{height:36px;padding:0 12px;border:0;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:6px;color:#fff;background:#168fb4;font-family:inherit;font-size:11px;font-weight:700}
+:is(.airspace-modal,.launch-site-modal)>footer button:disabled{opacity:.45;cursor:not-allowed}
+.object-create-dialog{width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:hidden}
+.object-create-dialog .object-create-fields{min-height:0;overflow-y:auto;align-content:start;padding:0 2px 2px;margin-top:16px;grid-template-columns:1fr 1fr;gap:10px}
+.object-create-dialog .object-create-fields>label{font-size:11px}
+.object-create-dialog .object-create-fields>label input,.object-create-dialog .object-create-fields>label select,.object-create-dialog .object-create-fields>label textarea{font-size:12px}
+.object-create-mode{display:flex;gap:4px;padding:4px;border-radius:8px;background:#e8f1f4}
+.object-create-mode button{flex:1;min-height:36px;border:0;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:6px;color:#526c78;background:transparent;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer}
+.object-create-mode button.active{color:#fff;background:#168fb4;box-shadow:0 5px 15px #168fb42b}
+.object-create-import{min-height:140px;padding:18px;border:2px dashed #9fc8d5;border-radius:10px;display:grid;place-content:center;justify-items:center;gap:7px;text-align:center;color:#526c78;background:#eff9fc}
+.object-create-import strong{color:#263b45;font-size:13px}
+.object-create-import span{max-width:520px;font-size:11px;line-height:1.45}
+.object-create-file{position:relative;min-height:32px;padding:0 13px;border-radius:7px;display:flex;align-items:center;color:#fff;background:#168fb4;font-size:11px;font-weight:700;cursor:pointer}
+.object-create-file input{position:absolute;width:1px;height:1px;opacity:0}
+.object-create-hint{margin:0;padding:8px 10px;border-left:2px solid #168fb4;color:#526c78;background:#eff9fc;font-size:10px;line-height:1.4}
+.object-create-dialog .object-create-map{grid-column:1/-1;height:180px;border:1px solid #bcd1d8;border-radius:8px;overflow:hidden}
+.object-create-dialog .object-create-check{display:flex;align-items:center;gap:8px}
+.object-create-dialog .object-create-check input{width:16px;height:16px}
+.object-create-dialog fieldset input[type=checkbox]{width:16px;height:16px}
+.object-create-error{margin:10px 0 0;padding:8px 10px;border-radius:6px;color:#a33120;background:#fff0ec;font-size:11px}
+.object-create-dialog footer{flex:none}
+@media(max-width:700px){.airspace-form{grid-template-columns:repeat(2,minmax(0,1fr))}.airspace-form .airspace-field-name,.airspace-form .airspace-schedule-hint{grid-column:1/-1}}

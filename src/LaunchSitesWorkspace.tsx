@@ -24,10 +24,12 @@ function SitesMap({sites,selected,onSelect,picking,onPick}:{sites:LaunchSite[];s
   return <div ref={container} className="launch-sites-map"/>
 }
 
-export function LaunchSitesWorkspace({sites,onSitesChange}:{sites:LaunchSite[];onSitesChange:(sites:LaunchSite[])=>void}){
+export function LaunchSitesWorkspace({sites,onSitesChange,searchQuery,createRequest=0}:{sites:LaunchSite[];onSitesChange:(sites:LaunchSite[])=>void;searchQuery?:string;createRequest?:number}){
   const [selected,setSelected]=useState<string|null>(sites[0]?.id||null);const [query,setQuery]=useState('');const [editing,setEditing]=useState(false);const [editingId,setEditingId]=useState<string|null>(null);const [picking,setPicking]=useState(false);const [notice,setNotice]=useState('');const [form,setForm]=useState<Omit<LaunchSite,'id'>>(emptyForm)
-  const visible=sites.filter(site=>`${site.name} ${site.surface}`.toLocaleLowerCase('ru-RU').includes(query.trim().toLocaleLowerCase('ru-RU')));const current=sites.find(site=>site.id===selected)
+  const lastCreateRequest=useRef(createRequest)
+  const visible=sites.filter(site=>`${site.name} ${site.surface}`.toLocaleLowerCase('ru-RU').includes((searchQuery??query).trim().toLocaleLowerCase('ru-RU')));const current=sites.find(site=>site.id===selected)
   const startCreate=()=>{setEditingId(null);setForm(emptyForm);setPicking(false);setEditing(true)}
+  useEffect(()=>{if(createRequest===lastCreateRequest.current)return;lastCreateRequest.current=createRequest;startCreate()},[createRequest])
   const startEdit=()=>{if(!current)return;const {id:_,...value}=current;setEditingId(current.id);setForm(value);setPicking(false);setEditing(true)}
   const save=async()=>{try{const response=await fetch(editingId?`/api/catalog/bases/${editingId}`:'/api/catalog/bases',{method:editingId?'PUT':'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.detail||'Не удалось сохранить площадку');const next=editingId?sites.map(item=>item.id===body.id?body:item):[...sites,body];onSitesChange(next);setSelected(body.id);setEditing(false);setEditingId(null);setPicking(false);setNotice('Площадка сохранена в справочнике.')}catch(error){setNotice(error instanceof Error?error.message:'Не удалось сохранить площадку')}}
   const remove=async()=>{if(!current||!confirm(`Удалить площадку «${current.name}»?`))return;const response=await fetch(`/api/catalog/bases/${current.id}`,{method:'DELETE',credentials:'include'});if(response.ok){const next=sites.filter(item=>item.id!==current.id);onSitesChange(next);setSelected(next[0]?.id||null);setNotice('Площадка удалена.')}else setNotice('Удаление не выполнено.')}

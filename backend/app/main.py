@@ -516,31 +516,6 @@ async def _save_airspace_zone(request: Request, zone: dict, *, update: bool = Fa
 @app.get("/api/airspace/summary", tags=["Воздушное пространство"])
 async def get_airspace_summary(request: Request, _: Annotated[UserView, Depends(current_user)]):
     zones = await _all_airspace_zones(request)
-    # Reuse locally cached OSM boundaries during routing. Overpass refreshes
-    # asynchronously; a missing tile never masquerades as verified clearance.
-    mission_geometry = payload.area.get('geometry', payload.area)
-    mission_bounds = shape(mission_geometry).bounds
-    origins = ([payload.launch_point] if payload.launch_point else
-               [(base['lon'], base['lat']) for base in BASES])
-    settlement_margin_deg = .15 + payload.settlement_clearance_m / 60000
-    settlement_bbox = (
-        min(mission_bounds[0], *(point[0] for point in origins)) - settlement_margin_deg,
-        min(mission_bounds[1], *(point[1] for point in origins)) - settlement_margin_deg,
-        max(mission_bounds[2], *(point[0] for point in origins)) + settlement_margin_deg,
-        max(mission_bounds[3], *(point[1] for point in origins)) + settlement_margin_deg,
-    )
-    for settlement in request.app.state.settlements.polygons(settlement_bbox):
-        try:
-            bounds = shape(settlement['geometry']).bounds
-        except (TypeError, ValueError):
-            continue
-        zones.append({
-            'id': f"settlement-{settlement['osm_type']}-{settlement['osm_id']}",
-            'name': settlement['name'] or 'Населённый пункт',
-            'category': 'settlement', 'bbox': list(bounds),
-            'geometry': settlement['geometry'], 'source_name': settlement['source'],
-            'enabled': True, 'properties': {},
-        })
     result = airspace_summary(zones)
     result["sources"] = sorted({zone["source_name"] for zone in zones})
     result["storage"] = "database" if request.app.state.pool is not None else "memory"
@@ -552,6 +527,10 @@ async def settlement_coverage(bbox: str, request: Request, _: Annotated[UserView
     bounds = _parse_bbox(bbox)
     return {**request.app.state.settlements.coverage(tuple(bounds)), "bbox": bounds,
             "source": "OSM/Overpass", "legal_status": "preliminary"}
+
+@app.get("/api/settlements/summary", tags=["Воздушное пространство"], summary="Число населённых пунктов в локальном справочнике")
+async def settlement_summary(request: Request, _: Annotated[UserView, Depends(current_user)]):
+    return {"total": request.app.state.settlements.count(), "source": "OSM/Overpass"}
 
 
 @app.get("/api/settlements/polygons", tags=["Воздушное пространство"], summary="Полигоны населённых пунктов для карты")

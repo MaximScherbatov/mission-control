@@ -933,7 +933,7 @@ function MethodologyModal({onClose}:{onClose:()=>void}){
   return <div className="methodology-backdrop" role="presentation" onMouseDown={event=>event.target===event.currentTarget&&onClose()}><section className="methodology-modal" role="dialog" aria-modal="true" aria-labelledby="methodology-title"><header><div><span>ИНЖЕНЕРНАЯ СПРАВКА</span><h2 id="methodology-title">Как рассчитывается миссия</h2><p>Ключевые этапы расчёта и проверок.</p></div><button onClick={onClose} aria-label="Закрыть"><X size={18}/></button></header><div className="methodology-flow"><span>Геометрия</span><span>Ограничения</span><span>Совместимость</span><span>Энергия</span><span>Распределение БВС</span><span>Оптимизация</span></div><p className="methodology-summary">Алгоритм строит покрытие территории, проверяет ограничения и допустимые комплекты БВС с сенсором, оценивает каждый вылет и сравнивает варианты по времени, налёту и затратам.</p><details className="methodology-details"><summary>Показать инженерные детали</summary><div className="methodology-grid"><article><h3>Геометрия съёмки</h3><p>Для площадного объекта рассчитываются захват кадра, шаг галсов и интервал срабатывания камеры. Для коридора и профильных методов используются ось объекта, ширина обследования и заданный шаг профилей.</p><code>H = (GSD / 100) × f × Nₓ / Sₓ<br/>W = H × Sₓ / f<br/>dгалс = W × (1 − pпопер.)<br/>dкадр = H × Sᵧ / f × (1 − pпрод.)</code></article><article><h3>Ветер и энергия</h3><p>Направление галсов сопоставляется с прогнозом ветра. Время и запас энергии оцениваются для неблагоприятной составляющей ветра, а частота съёмки — для максимальной путевой скорости.</p><code>Vземли = Vвозд ± Vветра<br/>Δt = dкадр / Vземли</code></article><article><h3>Воздушное пространство</h3><p>Запретные и опасные зоны, высотные препятствия и дистанции между БВС расширяются на заданный безопасный буфер. Для ОрВД определяется уведомительный или разрешительный порядок.</p></article><article><h3>Эксплуатационный цикл</h3><p>В маршрут входят взлёт, набор, перелёт, рабочие галсы, возврат, заход и посадка. Между повторными вылетами закладывается наземное обслуживание.</p></article></div></details><footer><span>Расчёт помогает планированию, но не заменяет разрешение на полёт, обследование площадки и требования РЛЭ.</span></footer></section></div>
 }
 
-function TopBar({ user, systemOk, demoMode, onDemoMode, onOpenCatalog, active, onView, onLogout }: { user: User; systemOk: boolean; demoMode:boolean; onDemoMode:(enabled:boolean)=>void; onOpenCatalog: (section: CatalogSection) => void; active: string; onView: (view: 'operations' | 'orders' | 'planner' | 'calendar' | 'airspace' | 'bases') => void; onLogout:()=>void }) {
+function TopBar({ user, systemOk, demoMode, onDemoMode, onOpenCatalog, active, onView, onLogout }: { user: User; systemOk: boolean; demoMode:boolean; onDemoMode:(enabled:boolean)=>void; onOpenCatalog: (section: CatalogSection) => void; active: string; onView: (view: 'operations' | 'orders' | 'planner' | 'calendar' | 'airspace') => void; onLogout:()=>void }) {
   return (
     <header className="top-bar glass-panel">
       <Brand />
@@ -943,7 +943,7 @@ function TopBar({ user, systemOk, demoMode, onDemoMode, onOpenCatalog, active, o
         <button className={active === 'orders' ? 'active' : ''} onClick={() => onView('orders')}><ClipboardList size={15} /> Заявки</button>
         <button className={active === 'planner' ? 'active' : ''} onClick={() => onView('planner')}><MapIcon size={15} /> Новое задание</button>
         <button className={active === 'calendar' ? 'active' : ''} onClick={() => onView('calendar')}><CalendarClock size={15} /> Планировщик</button>
-        <button className={active === 'airspace' || active === 'bases' ? 'active' : ''} onClick={() => onView('airspace')}><MapPin size={15} /> Объекты</button>
+        <button className={active === 'airspace' ? 'active' : ''} onClick={() => onView('airspace')}><MapPin size={15} /> Объекты</button>
         <button className={['uavs','payloads','technologies'].includes(active) ? 'active' : ''} onClick={() => onOpenCatalog('uavs')}><Plane size={15} /> Оборудование</button>
       </nav>
       <div className="top-actions">
@@ -966,10 +966,9 @@ function FleetPhoto({uav}: {uav: CatalogUav}) {
   return photo.viewBox ? <svg className="reference-photo" viewBox={photo.viewBox} role="img" aria-label={uav.name} preserveAspectRatio="xMidYMid slice"><image href={photo.src} width={photo.width} height={photo.height}/></svg> : <img className="device-photo" src={photo.src} alt={uav.name} loading="lazy" decoding="async"/>
 }
 
-function CatalogWorkspace({ section, onSection, onClose, uavs, payloads, technologies, missions, onOpenSchedule, onPlanMaintenance }: {
+function CatalogWorkspace({ section, onSection, uavs, payloads, technologies, missions, onOpenSchedule, onPlanMaintenance }: {
   section: CatalogSection;
   onSection: (section: CatalogSection) => void;
-  onClose: () => void;
   uavs: CatalogUav[];
   payloads: CatalogPayload[];
   technologies: TechnologyProfile[];
@@ -998,7 +997,6 @@ function CatalogWorkspace({ section, onSection, onClose, uavs, payloads, technol
     <section className="catalog-workspace" aria-label="Справочники предприятия">
       <header className="catalog-header">
         <div><span>ЦИФРОВАЯ МОДЕЛЬ ПРЕДПРИЯТИЯ</span><h2>Оборудование</h2><p>БВС, полезные нагрузки и технологические профили. Совместимость и тарифы — учебная конфигурация предприятия.</p></div>
-        <button onClick={onClose} aria-label="Закрыть справочники"><X size={21} /></button>
       </header>
       <div className="catalog-tabs">
         <button className={section === 'uavs' ? 'active' : ''} onClick={() => onSection('uavs')}><Plane size={16} /> БВС <b>{uavs.length}</b></button>
@@ -1378,7 +1376,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
 }
 
 export default function App() {
-  const [view, setView] = useState<'operations' | 'orders' | 'planner' | 'calendar' | 'airspace' | 'bases'>('operations')
+  const [view, setView] = useState<'operations' | 'orders' | 'planner' | 'calendar' | 'airspace'>('operations')
   const [maxAltitude, setMaxAltitude] = useState(150)
   const [lineSpacing, setLineSpacing] = useState(40)
   const [corridorWidth, setCorridorWidth] = useState(80)
@@ -1913,7 +1911,7 @@ export default function App() {
         {result&&resultsOpen&&<MissionResultsModal result={result} selected={selectedPlan} confirmedPlan={confirmedPlan} onSelect={id=>{setSelectedPlan(id);if(id!==confirmedPlan)setConfirmedPlan(null)}} onConfirm={id=>{setConfirmedPlan(id);setResultsOpen(false);setNotice(`Для календаря подтверждён вариант «${result.plans.find(plan=>plan.id===id)?.label||id}».`)}} onClose={()=>setResultsOpen(false)}/>} 
         </section>}
         {view === 'calendar' && !catalogSection && <CalendarDashboard uavs={catalogUavs} missions={replayableMissions} onReplay={openMissionReplay} onCreateMaintenance={addMaintenance} initialMode={calendarMode} focusUavId={calendarFocusUavId} maintenanceDraftUavId={maintenanceDraftUavId} onMaintenanceDraftConsumed={()=>setMaintenanceDraftUavId(null)} />}
-        {(view === 'airspace'||view==='bases') && !catalogSection && <ObjectsWorkspace sites={launchSites} onSitesChange={items=>{setLaunchSites(items);const selected=items.find(item=>item.id===selectedLaunchSiteId);if(selected)setLaunchPoint([selected.lon,selected.lat])}} />}
+        {view==='airspace' && !catalogSection && <ObjectsWorkspace sites={launchSites} onSitesChange={items=>{setLaunchSites(items);const selected=items.find(item=>item.id===selectedLaunchSiteId);if(selected)setLaunchPoint([selected.lon,selected.lat])}} />}
         {view === 'operations' && !catalogSection && <>
           <div className="operations-left-stack"><WeatherCard data={weather} radarEnabled={radarEnabled} onRadar={()=>setRadarEnabled(value=>!value)} effects={weatherEffects} onEffects={setWeatherEffects} radarTime={radarTime} radarLoading={radarLoading}/><AirTrafficCard enabled={airTrafficEnabled} loading={airTrafficLoading} data={airTraffic} error={airTrafficError} onToggle={() => setAirTrafficEnabled(value => !value)} showGround={groundTrafficEnabled} onGroundToggle={()=>setGroundTrafficEnabled(value=>!value)}/></div>
           <div className="airspace-layer-controls" aria-label="Слои воздушных ограничений">{([['prohibited','Запретные зоны'],['danger','Опасные зоны'],['obstacle','Высотные объекты']] as [OperationalAirspaceCategory,string][]).map(([category,label])=><button key={category} className={`airspace-layer-toggle ${category} ${airspaceVisibility[category]?'active':''}`} onClick={()=>setAirspaceVisibility(value=>({...value,[category]:!value[category]}))} aria-pressed={airspaceVisibility[category]}><ShieldAlert size={15}/><span>{label}</span><b>{airspaceCounts[category]}</b></button>)}<button className={`airspace-layer-toggle settlements ${settlementsVisible?'active':''}`} onClick={()=>setSettlementsVisible(value=>!value)} aria-pressed={settlementsVisible} title="Границы населённых пунктов из локального справочника OSM; число показывает объекты в видимой области карты"><MapPin size={15}/><span>Населённые пункты</span><b>{settlementCount}</b></button></div>
@@ -1922,7 +1920,7 @@ export default function App() {
         </>}
         {notice && <button className="app-notice" onClick={() => setNotice('')}><Check size={15} /> {notice}</button>}
         <div className="map-credit">OPENFREEMAP · OPENSTREETMAP · БЕЗ API-КЛЮЧА</div>
-        {catalogSection && <CatalogWorkspace section={catalogSection} onSection={setCatalogSection} onClose={() => setCatalogSection(null)} uavs={catalogUavs} payloads={catalogPayloads} technologies={technologyProfiles} missions={replayableMissions} onOpenSchedule={uavId=>{setCalendarMode('combined');setCalendarFocusUavId(uavId);setMaintenanceDraftUavId(null);setCatalogSection(null);setView('calendar')}} onPlanMaintenance={uavId=>{setCalendarMode('maintenance');setCalendarFocusUavId(uavId);setMaintenanceDraftUavId(uavId);setCatalogSection(null);setView('calendar')}} />}
+        {catalogSection && <CatalogWorkspace section={catalogSection} onSection={setCatalogSection} uavs={catalogUavs} payloads={catalogPayloads} technologies={technologyProfiles} missions={replayableMissions} onOpenSchedule={uavId=>{setCalendarMode('combined');setCalendarFocusUavId(uavId);setMaintenanceDraftUavId(null);setCatalogSection(null);setView('calendar')}} onPlanMaintenance={uavId=>{setCalendarMode('maintenance');setCalendarFocusUavId(uavId);setMaintenanceDraftUavId(uavId);setCatalogSection(null);setView('calendar')}} />}
       </>}
       {user === null && <LoginScreen onLogin={setUser} />}
     </main>

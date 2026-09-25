@@ -170,6 +170,10 @@ class SettlementStore:
         finally:
             connection.close()
 
+    def count(self) -> int:
+        with self._connect() as db:
+            return int(db.execute("SELECT COUNT(*) FROM settlements WHERE is_active=1").fetchone()[0])
+
     def coverage(self, bbox: tuple[float, float, float, float]) -> dict:
         tiles = tiles_for_bbox(bbox)
         if not tiles:

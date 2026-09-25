@@ -137,6 +137,9 @@ class SettlementTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(body["coverage"]["status"], "COVERED")
                 self.assertEqual(body["features"][0]["properties"]["name"], "Тестовый посёлок")
                 self.assertEqual(body["features"][0]["geometry"]["type"], "Polygon")
+                summary = client.get("/api/settlements/summary")
+                self.assertEqual(summary.status_code, 200, summary.text)
+                self.assertEqual(summary.json()["total"], 1)
 
 
 if __name__ == "__main__":
