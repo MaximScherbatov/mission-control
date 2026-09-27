@@ -1,18 +1,3 @@
----
-title: Mission Control — техническое описание и локальное развёртывание
-aliases:
-  - Техническое описание Mission Control
-  - Инструкция по развертыванию
-tags:
-  - citymetrics
-  - mission-control
-  - БВС
-  - конкурс
-  - docker
-status: конкурсный прототип
-version: 0.2
----
-
 # Mission Control — техническое описание и локальное развёртывание
 
 ## 1. Назначение сервиса
