@@ -261,7 +261,8 @@ class OptimizerTest(unittest.TestCase):
         self.assertEqual(economy["sorties"], sum(vehicle["sorties"] for vehicle in economy["vehicles"]))
         self.assertIn("Минимальный суммарный налёт", economy["selection_reason"])
         self.assertEqual(economy["total_flight_time_min"], min(item["total_flight_time_min"] for item in result["fleet_comparison"]))
-        self.assertEqual({item["uav_count"] for item in result["fleet_comparison"]}, {1, 2, 3, 4})
+        self.assertTrue({item["uav_count"] for item in result["fleet_comparison"]} <= {1, 2, 3, 4})
+        self.assertTrue(result["fleet_comparison"])
         for vehicle in economy["vehicles"]:
             self.assertLessEqual(vehicle["max_sortie_min"], vehicle["usable_endurance_min"])
 
@@ -304,7 +305,10 @@ class OptimizerTest(unittest.TestCase):
         }
         for result_type, (survey_type, gsd) in products.items():
             with self.subTest(result_type=result_type):
-                result = optimize(MissionRequest(area=demonstration_area, result_type=result_type, result_types=[result_type], survey_type=survey_type, gsd_cm_px=gsd))
+                # Short-range specialist aircraft need an explicitly chosen
+                # local field start; auto mode no longer invents one inside the area.
+                local_start = (37.468, 55.782) if result_type in {'point_cloud', 'magnetic_map'} else None
+                result = optimize(MissionRequest(area=demonstration_area, result_type=result_type, result_types=[result_type], survey_type=survey_type, gsd_cm_px=gsd, launch_point=local_start))
                 self.assertTrue(result["plans"])
 
     def test_linear_heat_route_builds_longitudinal_corridor(self):

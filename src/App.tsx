@@ -4,7 +4,6 @@ import type * as GeoJSON from 'geojson'
 import { PolygonEditor, type MissionGeometry } from './PolygonEditor'
 import { installSettlementMapLayer, setSettlementMapVisibility } from './settlementMapLayer'
 import { CalendarDashboard, type MaintenanceDraft, type PlannerCalendarMode } from './CalendarDashboard'
-import { MissionExportActions } from './MissionExportActions'
 import { OrdersWorkspace, type CustomerOrder } from './OrdersWorkspace'
 import { ObjectsWorkspace } from './ObjectsWorkspace'
 import type { LaunchSite } from './LaunchSitesWorkspace'
@@ -84,7 +83,7 @@ const initialMissionCorridor: GeoJSON.Feature<GeoJSON.LineString> = {
 const bases = {
   type: 'FeatureCollection' as const,
   features: [
-    { type: 'Feature' as const, properties: { name: 'Полевой аэродром Клин', kind: 'ВПП', surface: 'подготовленный грунт', runway: '420 м', heading: '064° / 244°', support: 'зарядка · связь · метеопост', status: 'Готов к приёму' }, geometry: { type: 'Point' as const, coordinates: [36.72, 56.24] } },
+    { type: 'Feature' as const, properties: { name: 'Полевой аэродром Клин', kind: 'ВПП', surface: 'подготовленный грунт', runway: '420 м', heading: '064° / 244°', support: 'зарядка · связь · метеопост', status: 'Готов к приёму' }, geometry: { type: 'Point' as const, coordinates: [36.72, 56.232] } },
     { type: 'Feature' as const, properties: { name: 'Площадка Яхрома', kind: 'VTOL-площадка', surface: 'бетон', runway: '40 × 40 м', heading: 'вертикальный взлёт', support: 'зарядка · RTK', status: 'Готова к приёму' }, geometry: { type: 'Point' as const, coordinates: [36.95, 56.35] } },
     { type: 'Feature' as const, properties: { name: 'Аэродром Дмитров', kind: 'ВПП', surface: 'асфальт', runway: '680 м', heading: '082° / 262°', support: 'ангар · топливо · зарядка · RTK', status: 'Готов к приёму' }, geometry: { type: 'Point' as const, coordinates: [37.35, 56.25] } },
     { type: 'Feature' as const, properties: { name: 'Площадка Сергиев Посад', kind: 'смешанная', surface: 'полевой старт', runway: '310 м', heading: '118° / 298°', support: 'мобильный пункт управления', status: 'Готова к приёму' }, geometry: { type: 'Point' as const, coordinates: [37.55, 56.27] } },
@@ -92,7 +91,7 @@ const bases = {
 }
 
 const centerLaunchSites:LaunchSite[] = [
-  {id:'base-klin',name:'Полевой аэродром Клин',kind:'runway',lat:56.24,lon:36.72,surface:'подготовленный грунт',runway_length_m:420,heading_deg:64,supports:['fixed_wing','multirotor','vtol'],has_charging:true,has_fuel:false,status:'open',notes:'зарядка · связь · метеопост',editable:true},
+  {id:'base-klin',name:'Полевой аэродром Клин',kind:'runway',lat:56.232,lon:36.72,surface:'подготовленный грунт',runway_length_m:420,heading_deg:64,supports:['fixed_wing','multirotor','vtol'],has_charging:true,has_fuel:false,status:'open',notes:'зарядка · связь · метеопост',editable:true},
   {id:'base-yakhroma',name:'Площадка Яхрома',kind:'vtol',lat:56.35,lon:36.95,surface:'бетон',runway_length_m:40,heading_deg:0,supports:['multirotor','vtol'],has_charging:true,has_fuel:false,status:'open',notes:'зарядка · RTK',editable:true},
   {id:'base-dmitrov',name:'Аэродром Дмитров',kind:'runway',lat:56.25,lon:37.35,surface:'асфальт',runway_length_m:680,heading_deg:82,supports:['fixed_wing','multirotor','vtol'],has_charging:true,has_fuel:true,status:'open',notes:'ангар · топливо · зарядка · RTK',editable:true},
   {id:'base-sergiev-posad',name:'Площадка Сергиев Посад',kind:'runway',lat:56.27,lon:37.55,surface:'полевой старт',runway_length_m:310,heading_deg:118,supports:['fixed_wing','multirotor','vtol'],has_charging:true,has_fuel:false,status:'open',notes:'мобильный пункт управления',editable:true},
@@ -221,6 +220,7 @@ type ApiVehicle = {
   reserve_percent?: number;
   uav_id:string;
   uav_name: string;
+  base_name:string;
   altitude_m: number;
   cost_rub: number;
   elapsed_time_min:number;
@@ -282,6 +282,21 @@ type OptimizationResult = {
   airspace?: AirspaceAssessment;
   settlement_assessment?: SettlementAssessment;
   settlement_assessments?: Record<string,SettlementAssessment>;
+}
+
+function calendarBlockReason(result:OptimizationResult|null,planId:PlanId,date:string,time:string,missions:ScheduledMission[],checksConfirmed:boolean):string|null{
+  if(!result)return 'Сначала рассчитайте задание.'
+  const plan=result.plans.find(item=>item.id===planId)
+  if(!plan?.vehicles.length)return 'Для сценария нет назначаемых БВС.'
+  if(date<localDateIso())return 'Выберите сегодняшнюю или будущую дату.'
+  if(plan.duration_min>720)return 'Кампанию длиннее 12 часов нужно разделить на дневные задания.'
+  if(plan.airspace_avoidance?.unresolved)return 'Маршрут требует корректировки: безопасный обход не найден.'
+  const durationHours=Math.max(1,plan.duration_min/60)
+  const busy=plan.vehicles.filter(vehicle=>!availableUavIds([vehicle.uav_id],missions,date,time,durationHours).includes(vehicle.uav_id))
+  if(busy.length)return `БВС заняты в этом окне: ${busy.map(vehicle=>vehicle.uav_name).join(', ')}.`
+  const settlement=result.settlement_assessments?.[planId]||result.settlement_assessment
+  if((plan.deployment?.required||plan.link_assessment?.status==='coverage_unverified'||(settlement&&settlement.status!=='COVERED'))&&!checksConfirmed)return 'Подтвердите предварительные условия в блоке «Дата и доступность».'
+  return null
 }
 
 type CatalogUav = {
@@ -722,7 +737,7 @@ function Brand() {
   )
 }
 
-function MissionPanel({ onCalculate, onLoadEconomicsDemo, onSchedule, onOpenResults, missions, scheduledDate, onScheduledDate, scheduledTime, onScheduledTime, deadlineEnabled, onDeadlineEnabled, deadlineDate, onDeadlineDate, deadlineTime, onDeadlineTime, maxUavs, onMaxUavs, selectedPlan, confirmedPlan, drawMode, selectedProduct, onSelectProduct, result, catalogCounts, payloads, uavs, selectedPayloadId, onPayloadChange, gsd, onGsdChange, sideOverlap, onSideOverlapChange, forwardOverlap, onForwardOverlapChange, maxAltitude, onMaxAltitude, selectedProducts, lineSpacing, onLineSpacing, planningWeather, airspaceSettings, onAirspaceSettings, controlLinkSettings, onControlLinkSettings, areaSummary }: {
+function MissionPanel({ onCalculate, onLoadEconomicsDemo, onSchedule, onOpenResults, missions, scheduledDate, onScheduledDate, scheduledTime, onScheduledTime, deadlineEnabled, onDeadlineEnabled, deadlineDate, onDeadlineDate, deadlineTime, onDeadlineTime, maxUavs, onMaxUavs, selectedPlan, drawMode, selectedProduct, onSelectProduct, result, catalogCounts, payloads, uavs, selectedPayloadId, onPayloadChange, gsd, onGsdChange, sideOverlap, onSideOverlapChange, forwardOverlap, onForwardOverlapChange, maxAltitude, onMaxAltitude, selectedProducts, lineSpacing, onLineSpacing, planningWeather, airspaceSettings, onAirspaceSettings, controlLinkSettings, onControlLinkSettings, areaSummary, operationalChecksConfirmed, onOperationalChecksConfirmed }: {
   lineSpacing: number; onLineSpacing: (value:number) => void;
   maxAltitude: number; onMaxAltitude: (value: number) => void; selectedProducts: ProductId[];
   onCalculate: () => void;
@@ -737,7 +752,7 @@ function MissionPanel({ onCalculate, onLoadEconomicsDemo, onSchedule, onOpenResu
   deadlineTime:string; onDeadlineTime:(value:string)=>void;
   maxUavs:number|null; onMaxUavs:(value:number|null)=>void;
   selectedPlan: PlanId;
-  confirmedPlan:PlanId|null;
+  operationalChecksConfirmed:boolean;onOperationalChecksConfirmed:(confirmed:boolean)=>void;
   drawMode: boolean;
   selectedProduct: ProductId;
   onSelectProduct: (product: ProductId) => void;
@@ -760,7 +775,6 @@ function MissionPanel({ onCalculate, onLoadEconomicsDemo, onSchedule, onOpenResu
   areaSummary?:string;
 }) {
   const [engineeringOpen, setEngineeringOpen] = useState(false)
-  const [operationalChecksConfirmed,setOperationalChecksConfirmed]=useState(false)
   const [stage,setStage]=useState(1)
   const product = missionProducts[selectedProduct]
   const compatiblePayloads = payloads.filter((payload) => payload.spectrums.includes(product.surveyType))
@@ -781,7 +795,7 @@ function MissionPanel({ onCalculate, onLoadEconomicsDemo, onSchedule, onOpenResu
   const settlementDataIncomplete=Boolean(settlementAssessment&&settlementAssessment.status!=='COVERED')
   const needsOperationalCheck=Boolean(selectedPlanResult?.deployment?.required||selectedPlanResult?.link_assessment?.status==='coverage_unverified'||settlementDataIncomplete)
   const routeNeedsCorrection=Boolean(selectedPlanResult?.airspace_avoidance?.unresolved)
-  useEffect(()=>setOperationalChecksConfirmed(false),[result,selectedPlan])
+  const scheduleReason=calendarBlockReason(result,selectedPlan,scheduledDate,scheduledTime,missions,operationalChecksConfirmed)
   const plannedDuration = Math.max(1, (selectedPlanResult?.duration_min || 180) / 60)
   const freeIds = availableUavIds(suitableUavs.map(uav=>uav.id), missions, scheduledDate, scheduledTime, plannedDuration)
   const availableUavs = suitableUavs.filter(uav=>freeIds.includes(uav.id))
@@ -875,15 +889,15 @@ function MissionPanel({ onCalculate, onLoadEconomicsDemo, onSchedule, onOpenResu
 
       <section className="schedule-card">
         <div className="schedule-heading"><span><CalendarClock size={16}/> Дата и доступность</span><em>{result ? `${plannedDuration.toFixed(1)} ч по расчёту` : 'оценка 3,0 ч'}</em></div>
-        {result&&<div className="schedule-plan-confirmation"><span>{confirmedPlan===selectedPlan?`Для календаря подтверждён: ${selectedPlanResult?.label}`:`На карте предпросмотр: ${selectedPlanResult?.label}. Для календаря подтвердите вариант в результатах.`}</span>{confirmedPlan!==selectedPlan&&<button type="button" onClick={onOpenResults}>Выбрать вариант</button>}</div>}
+        {result&&<div className="schedule-plan-confirmation"><span>Выбран сценарий: {selectedPlanResult?.label}. Перед назначением проверьте условия ниже.</span><button type="button" onClick={onOpenResults}>Сменить сценарий</button></div>}
         <div className="schedule-fields"><label>Дата<input type="date" min={localDateIso()} value={scheduledDate} onChange={event=>onScheduledDate(event.target.value)}/></label><label>Старт<input type="time" step="900" value={scheduledTime} onChange={event=>onScheduledTime(event.target.value)}/></label></div>
         <div className="planning-constraints"><label>Доступно БВС<select aria-label="Ограничение числа БВС" value={maxUavs??'all'} onChange={event=>onMaxUavs(event.target.value==='all'?null:Number(event.target.value))}><option value="all">Весь совместимый флот</option>{[1,2,3,4].map(count=><option key={count} value={count}>Не более {count}</option>)}</select></label><label className="deadline-toggle"><input type="checkbox" checked={deadlineEnabled} onChange={event=>onDeadlineEnabled(event.target.checked)}/>Завершить к сроку</label>{deadlineEnabled&&<><label>Дата окончания<input aria-label="Дата окончания" type="date" min={scheduledDate} value={deadlineDate} onChange={event=>onDeadlineDate(event.target.value)}/></label><label>Время окончания<input aria-label="Время окончания" type="time" step="900" value={deadlineTime} onChange={event=>onDeadlineTime(event.target.value)}/></label></>}</div>
         <div className={`availability-state ${pastDate||(result?!fleetAvailable:!availableUavs.length)?'unavailable':'available'}`}><span className="pulse-dot"/><div><strong>{pastDate?'Прошедшая дата недоступна':result?(fleetAvailable?`Все ${plannedVehicles.length} БВС выбранного плана свободны`:`Заняты: ${busyPlanVehicles.map(vehicle=>vehicle.uav_name).join(', ')}`):availableUavs.length?`${availableUavs.length} из ${suitableUavs.length} совместимых бортов свободны`:'Все совместимые борта заняты'}</strong><small>{pastDate?'Выберите сегодня или будущую дату.':fleetAvailable||!result?`Окно ${scheduledTime}–${new Date(new Date(`2000-01-01T${scheduledTime}`).getTime()+plannedDuration*3_600_000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`:'Выберите другой сценарий, время или дату и пересчитайте план.'}</small></div></div>
         <div className={`planning-weather ${weatherScore===null?'unknown':weatherScore<55?'critical':weatherScore<78?'attention':'good'}`}><CloudSun size={16}/><div><strong>{weatherScore===null?'Прогноз пока недоступен':`Погодное окно ${weatherScore}/100`}</strong><small>{planningWeather?`ветер ${planningWeather.wind_speed_mps.toFixed(1)} м/с · осадки ${planningWeather.precipitation_probability}% · видимость ${(planningWeather.visibility_m/1000).toFixed(0)} км`:'Дата находится за пределами доступного прогноза; потребуется повторная проверка перед вылетом.'}</small></div></div>
         {!!plannedVehicles.length && <div className="available-uavs"><small>Борта выбранного плана</small><div>{plannedVehicles.map(vehicle=><span className="plan-assigned-uav" key={vehicle.uav_id}><Plane size={13}/>{vehicle.uav_name} · {vehicle.sorties||1} выл.</span>)}</div></div>}
         {selectedPlanResult&&selectedPlanResult.duration_min>720&&<p className="planner-campaign-warning">Расчёт занимает {(selectedPlanResult.duration_min/60).toFixed(1)} ч. Это кампания, а не один рабочий день: разбейте контур на дневные задания перед назначением в календарь. Сервис пока не назначает многодневную работу автоматически.</p>}
-        {needsOperationalCheck&&<label className="operational-check"><input type="checkbox" checked={operationalChecksConfirmed} onChange={event=>setOperationalChecksConfirmed(event.target.checked)}/><span>{selectedPlanResult?.deployment?.required&&`Подтверждаю перебазирование БВС на ${selectedPlanResult.deployment.max_distance_km?.toLocaleString('ru-RU')} км. `}{selectedPlanResult?.link_assessment?.status==='coverage_unverified'&&'Покрытие внешнего канала по маршруту проверено. '}{settlementDataIncomplete&&'Понимаю: границы населённых пунктов загружены не полностью, запись в календаре — предварительная симуляция, не разрешение на вылет. '}Эти проверки и затраты на доставку не входят в расчёт.</span></label>}
-        <button className="schedule-submit" disabled={!result||confirmedPlan!==selectedPlan||pastDate||!fleetAvailable||routeNeedsCorrection||(needsOperationalCheck&&!operationalChecksConfirmed)||Boolean(selectedPlanResult&&selectedPlanResult.duration_min>720)} onClick={onSchedule}><CalendarClock size={17}/>{!result?'Сначала рассчитайте план':confirmedPlan!==selectedPlan?'Подтвердите вариант в результатах':selectedPlanResult&&selectedPlanResult.duration_min>720?'Разделите кампанию по дням':routeNeedsCorrection?'Нужна корректировка маршрута':!fleetAvailable?'Один из бортов плана занят':needsOperationalCheck&&!operationalChecksConfirmed?'Подтвердите предварительные условия':`Назначить ${plannedVehicles.length} БВС · ${selectedPlanResult?.sorties||0} выл.`}</button>
+        {needsOperationalCheck&&<label className="operational-check"><input type="checkbox" checked={operationalChecksConfirmed} onChange={event=>onOperationalChecksConfirmed(event.target.checked)}/><span>{selectedPlanResult?.deployment?.required&&`Подтверждаю перебазирование БВС на ${selectedPlanResult.deployment.max_distance_km?.toLocaleString('ru-RU')} км. `}{selectedPlanResult?.link_assessment?.status==='coverage_unverified'&&'Покрытие внешнего канала по маршруту проверено. '}{settlementDataIncomplete&&'Понимаю: границы населённых пунктов загружены не полностью, запись в календаре — предварительная симуляция, не разрешение на вылет. '}Эти проверки и затраты на доставку не входят в расчёт.</span></label>}
+        <button className="schedule-submit" disabled={Boolean(scheduleReason)} onClick={onSchedule}><CalendarClock size={17}/>{scheduleReason||`Назначить ${plannedVehicles.length} БВС · ${selectedPlanResult?.sorties||0} выл.`}</button>
       </section>
       </div></div>
 
@@ -1236,7 +1250,7 @@ function ReplayControls({mission,playback,contextCount,onChange,onClose}:{missio
   </section>
 }
 
-function PlanComparison({ selected, onSelect, calculating, result }: { selected: PlanId; onSelect: (id: PlanId) => void; calculating: boolean; result: OptimizationResult | null }) {
+function PlanComparison({ selected, expanded, onSelect, calculating, result, children }: { selected: PlanId; expanded:PlanId|null; onSelect: (id: PlanId) => void; calculating: boolean; result: OptimizationResult | null; children?:React.ReactNode }) {
   if (!result) return <div className="plan-empty">{calculating ? 'Строим галсы, проверяем автономность и считаем затраты…' : 'Измените параметры и нажмите «Рассчитать производственный план». Сценарии появятся после расчёта.'}</div>
   const formatMinutes = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
   const planEntries = (Object.entries(plans) as [PlanId, typeof plans.fast][]).map(([id, fallback]) => {
@@ -1248,19 +1262,13 @@ function PlanComparison({ selected, onSelect, calculating, result }: { selected:
       cost: `${Math.round(live.cost_rub).toLocaleString('ru-RU')} ₽`,
       uavs: live.uav_count,
       sorties: live.sorties || live.vehicles.reduce((sum, vehicle) => sum + (vehicle.sorties || 1), 0),
-      risk: `${live.reserve_percent || 22}%`,
       reason: live.selection_reason,
-    } : {...fallback,time:'—',flight:'—',cost:'Недоступен',uavs:0,sorties:0,risk:'—',reason:''}] as const
+    } : {...fallback,time:'—',flight:'—',cost:'Недоступен',uavs:0,sorties:0,reason:''}] as const
   })
   const recommended = result?.plans.find((plan) => plan.id === result.recommended_plan_id)
   const fastest = result.plans.find((plan) => plan.id === 'fast')
   const savedFlight = Math.max(0, Math.round((fastest?.total_flight_time_min || 0) - (recommended?.total_flight_time_min || 0)))
   const extraTime = Math.max(0, Math.round((recommended?.duration_min || 0) - (fastest?.duration_min || 0)))
-  const economy = result.plans.find(plan => plan.id === 'economy')
-  const sameFlightPlan = (left: typeof economy, right: typeof economy) => Boolean(left && right && left.vehicles.length === right.vehicles.length && left.vehicles.every((vehicle, index) => {
-    const other = right.vehicles[index]
-    return vehicle.uav_id === other.uav_id && vehicle.sorties === other.sorties && JSON.stringify(vehicle.route.coordinates) === JSON.stringify(other.route.coordinates)
-  }))
   return (
     <section className={`plan-dock glass-panel ${calculating ? 'calculating' : ''}`}>
       <div className="dock-summary">
@@ -1271,14 +1279,13 @@ function PlanComparison({ selected, onSelect, calculating, result }: { selected:
       <div className="plan-options">
         {planEntries.map(([id, plan]) => {
           const Icon = plan.icon
-          const equivalentToEconomy = id === 'safe' && sameFlightPlan(economy, result.plans.find(item => item.id === id))
           return (
-            <button key={id} disabled={!result.plans.some(p => p.id === id)} className={`plan-card ${selected === id ? 'selected' : ''}`} onClick={() => onSelect(id)} style={{ '--accent': plan.accent } as React.CSSProperties}>
+            <article key={id} className={`plan-card ${selected === id ? 'selected' : ''}`} style={{ '--accent': plan.accent } as React.CSSProperties}><button type="button" className="plan-card-toggle" disabled={!result.plans.some(p => p.id === id)} aria-expanded={expanded===id} onClick={() => onSelect(id)}>
               <div className="plan-title"><Icon size={17} /><span>{plan.label}</span>{selected === id ? <em>НА КАРТЕ</em> : result.recommended_plan_id === id ? <em>РЕКОМ.</em> : null}</div>
               <div className="plan-metrics"><div><small>Завершение</small><strong>{plan.time}</strong></div><div><small>Стоимость</small><strong>{plan.cost}</strong></div></div>
-              <div className="plan-footer"><span>{plan.uavs} БВС · {plan.sorties} выл. · Σ налёт {plan.flight}</span><span>резерв {plan.risk}</span></div>
-              <p className="scenario-criterion">{equivalentToEconomy ? 'Маршрут и состав БВС совпадают с «Минимумом налёта»: здесь отличается только требуемый резерв автономности.' : plan.reason || (id === 'fast' ? 'Минимум времени; несколько БВС могут работать параллельно.' : id === 'economy' ? 'Минимум суммарного налёта с подлётом и возвратом.' : 'Резерв автономности 30%.')}</p>
-            </button>
+              <div className="plan-footer"><span>{plan.uavs} БВС · {plan.sorties} выл. · Σ налёт {plan.flight}</span></div>
+              <span className="plan-expand-hint">{expanded===id?'Свернуть детали':'Показать детали'} <ChevronDown size={14}/></span>
+            </button>{expanded===id&&children&&<div className="plan-card-expanded">{children}</div>}</article>
           )
         })}
       </div>
@@ -1287,22 +1294,16 @@ function PlanComparison({ selected, onSelect, calculating, result }: { selected:
   )
 }
 
-function FleetEconomics({result}:{result:OptimizationResult}){
-  const variants=result.fleet_comparison||[]
-  if(!variants.length)return null
-  const minimum=Math.min(...variants.map(item=>item.total_flight_time_min))
-  const winner=variants.find(item=>item.recommended)||variants.find(item=>item.total_flight_time_min===minimum)||variants[0]
-  const money=(value:number)=>Math.round(value).toLocaleString('ru-RU')
+function ScenarioComparison({result}:{result:OptimizationResult}){
   const time=(minutes:number)=>`${Math.floor(minutes/60)} ч ${minutes%60} мин`
-  return <section className="fleet-economics" aria-label="Сравнение загрузки флота">
-    <header><div><small>СРАВНЕНИЕ СЦЕНАРИЕВ</small><h3>Одна территория — разные составы флота</h3><p>Для каждого числа БВС показан вариант с минимальным суммарным налётом. Время завершения учитывает параллельную работу; цена — отдельная демонстрационная оценка.</p></div><span>{result.economics?.candidate_count||variants.length} сочетаний проверено</span></header>
-    <div className="fleet-economics-table-wrap"><table><thead><tr><th>Состав и вылеты</th><th>Завершение</th><th>Суммарный налёт</th><th>Стоимость</th></tr></thead><tbody>{variants.map(item=><tr key={item.uav_count} className={item.recommended?'recommended':''}><td><strong>{item.uav_count} БВС · {item.sorties} выл.</strong><small>{item.vehicle_names.map((name,index)=>`${name} × ${item.vehicle_sorties[index]}`).join(' · ')}</small></td><td>{time(item.duration_min)}</td><td><b>{time(item.total_flight_time_min)}</b> {item.recommended?<em>МИНИМУМ</em>:`+${time(item.total_flight_time_min-minimum)}`}</td><td>{money(item.cost_rub)} ₽</td></tr>)}</tbody></table></div>
-    <details className="fleet-cost-explainer"><summary>Как получилась цена {winner.uav_count} БВС / {winner.sorties} выл.</summary><div>{Object.entries(winner.cost_components).map(([name,value])=><span key={name}>{name}<b>{money(value)} ₽</b></span>)}</div></details>
-    <p className="fleet-economics-note">Тарифы демонстрационные: подготовка {money(result.economics?.sortie_preparation_cost_rub||0)} ₽/вылет, мобилизация {money(result.economics?.uav_mobilization_cost_rub||0)} ₽/БВС. Доставка к удалённой площадке не включена.</p>
-  </section>
+  return <details className="fleet-economics scenario-comparison"><summary><span>СРАВНЕНИЕ СЦЕНАРИЕВ</span><ChevronDown size={16}/></summary>
+    <div className="fleet-economics-table-wrap"><table><thead><tr><th>Сценарий и состав</th><th>Завершение</th><th>Суммарный налёт</th><th>Стоимость</th></tr></thead><tbody>{result.plans.map(plan=><tr key={plan.id} className={plan.id===result.recommended_plan_id?'recommended':''}><td><strong>{plan.label}</strong><small>{plan.uav_count} БВС · {plan.sorties||plan.vehicles.reduce((sum,vehicle)=>sum+(vehicle.sorties||1),0)} выл. · {plan.vehicles.map(vehicle=>vehicle.uav_name).join(', ')}</small></td><td>{time(plan.duration_min)}</td><td><b>{time(plan.total_flight_time_min)}</b></td><td>{Math.round(plan.cost_rub).toLocaleString('ru-RU')} ₽</td></tr>)}</tbody></table></div>
+    <p className="fleet-economics-note">Стоимость — предварительная демонстрационная оценка. Маршруты сценариев могут совпадать, если меняется только состав БВС или резерв.</p>
+  </details>
 }
 
-function MissionResultsModal({ result, selected, confirmedPlan, onSelect, onConfirm, onClose }: { result: OptimizationResult; selected: PlanId; confirmedPlan:PlanId|null; onSelect: (id: PlanId) => void; onConfirm:(id:PlanId)=>void; onClose: () => void }) {
+function MissionResultsModal({ result, selected, areaKm2, missionTitle, scheduledDate, scheduledTime, scheduleReason, onSelect, onSchedule, onClose }: { result: OptimizationResult; selected: PlanId; areaKm2:number; missionTitle:string; scheduledDate:string; scheduledTime:string; scheduleReason:string|null; onSelect: (id: PlanId) => void; onSchedule:()=>void; onClose: () => void }) {
+  const [expandedPlan,setExpandedPlan]=useState<PlanId|null>(selected)
   useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==='Escape')onClose()};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close)},[onClose])
   const plan = result.plans.find(item => item.id === selected) || result.plans[0]
   const settlementAssessment=result.settlement_assessments?.[selected]||result.settlement_assessment
@@ -1312,21 +1313,23 @@ function MissionResultsModal({ result, selected, confirmedPlan, onSelect, onConf
   const airspaceLabel = routeUnsafe ? 'Нужна корректировка маршрута' : result.airspace?.status === 'clear' ? 'Конфликтов не найдено' : result.airspace?.status === 'notification_required' ? 'Уведомительный порядок' : result.airspace?.status === 'permission_required' ? 'Нужно разрешение' : 'Нужна корректировка'
   return <div className="mission-results-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
     <section className="mission-results-modal" role="dialog" aria-labelledby="mission-results-title">
-      <header><div><span>РАСЧЁТ ЗАВЕРШЁН · {(result.calculation_ms/1000).toLocaleString('ru-RU',{maximumFractionDigits:1})} С</span><h2 id="mission-results-title">Сценарии выполнения задания</h2><p>Маршрут: {((result.timings_ms?.route_planning??result.calculation_ms)/1000).toLocaleString('ru-RU',{maximumFractionDigits:1})} с; локальная проверка границ: {((result.timings_ms?.settlement_lookup??0)/1000).toLocaleString('ru-RU',{maximumFractionDigits:1})} с. Догрузка Overpass выполняется отдельно и не задерживает расчёт.</p><p>Сценарии могут иметь один маршрут, если ограничения не меняют оптимальный состав флота. Для календаря подтвердите выбранный вариант отдельно.</p></div><div className="results-header-actions"><a href={`/api/missions/${encodeURIComponent(result.mission_id)}/export?plan=${encodeURIComponent(selected)}&format=kml`} download><Download size={15}/> Скачать KML</a><button type="button" onClick={onClose} aria-label="Закрыть результаты"><X size={18}/></button></div></header>
-      <PlanComparison selected={selected} onSelect={onSelect} calculating={false} result={result}/>
-      {plan&&<MissionExportActions missionId={result.mission_id} planId={selected}/>}
-      <FleetEconomics result={result}/>
-      {plan && <div className="mission-results-detail">
-        <section className="result-vehicle-section"><div className="result-section-heading"><div><small>ВЫБРАННЫЙ СЦЕНАРИЙ</small><h3>{plan.label}</h3></div><div className="result-summary-pills"><span><b>{plan.duration_min} мин</b> завершение</span><span><b>{plan.total_flight_time_min} мин</b> Σ налёт</span><span><b>{Math.round(plan.cost_rub).toLocaleString('ru-RU')} ₽</b> стоимость</span><span><b>{plan.uav_count}</b> БВС</span><span><b>{sortieCount}</b> {sortieLabel}</span><span><b>{plan.reserve_percent || 0}%</b> резерв</span></div></div>
-          {plan.selection_reason&&<p className="result-selection-reason">{plan.selection_reason}</p>}
-          {plan.maintenance_policy&&<p className="result-selection-reason">ТО: {plan.maintenance_policy}</p>}
-          <div className="result-operational-notes"><p><Radio size={15}/>{plan.link_assessment?.mode==='radio'?`Прямая радиосвязь: удаление до ${plan.link_assessment.max_distance_km.toLocaleString('ru-RU')} км при расчётном пределе ${plan.link_assessment.planning_limit_km?.toLocaleString('ru-RU')} км. Это не проверка рельефа и качества сигнала.`:'Внешний канал: покрытие по всей траектории не подтверждено; до назначения полёта нужна проверка оператора.'}</p>{plan.deployment?.required&&<p><MapPin size={15}/>Потребуется перебазировать БВС примерно на {plan.deployment.max_distance_km?.toLocaleString('ru-RU')} км. Доставка и её стоимость не включены в бюджет сценария.</p>}</div>
-          <div className="result-vehicles">{plan.vehicles.map(vehicle=><article key={vehicle.uav_name}><header><strong>{vehicle.uav_name}</strong><span>{vehicle.sorties || 1} выл. · до {vehicle.max_sortie_min?.toFixed(0) || '—'} из {vehicle.usable_endurance_min?.toFixed(0) || '—'} мин доступной автономности · {vehicle.altitude_m} м AGL{vehicle.turn_radius_m?` · R ≥ ${vehicle.turn_radius_m} м при ${vehicle.turn_speed_kmh} км/ч, крен ≤ ${vehicle.turn_bank_deg}°`:''}{vehicle.runway_heading_deg!==null&&vehicle.runway_heading_deg!==undefined?` · ВПП ${vehicle.runway_length_m} м / ${vehicle.runway_heading_deg}°, взлёт ${vehicle.departure_heading_deg}° · ${vehicle.runway_headwind_mps&&vehicle.runway_headwind_mps<0?'попутный':'встречный'} ${Math.abs(vehicle.runway_headwind_mps||0)} м/с, боковой ${vehicle.runway_crosswind_mps||0} м/с`:''}{vehicle.departure_offset_min?` · старт +${vehicle.departure_offset_min} мин`:''}</span></header><div className="compact-phase-timeline">{vehicle.phases?.map((phase,index)=><span key={`${phase.name}-${index}`} style={{flex:Math.max(phase.minutes,2),'--phase-color':['#20b5e5','#71a2bd','#f15a32','#a47dea','#71a2bd','#20b5e5','#899398'][index%7]} as React.CSSProperties} title={`${phase.name}: ${phase.minutes.toFixed(1)} мин`}><b>{phase.minutes.toFixed(0)}</b><small>{phase.name}</small></span>)}</div></article>)}</div>
+      <header><div><span>РАСЧЁТ ЗАВЕРШЁН · {(result.calculation_ms/1000).toLocaleString('ru-RU',{maximumFractionDigits:1})} С</span><h2 id="mission-results-title">Сценарии выполнения задания</h2><p>Выберите сценарий, чтобы увидеть состав флота и условия выполнения.</p></div><div className="results-header-actions"><button type="button" onClick={onClose} aria-label="Закрыть результаты"><X size={18}/></button></div></header>
+      <div className="result-mission-card"><div><small>КАРТОЧКА ЗАДАНИЯ</small><strong>{missionTitle}</strong><span>Планируемое начало: {scheduledDate.split('-').reverse().join('.')} в {scheduledTime}</span></div><div><small>ПЛОЩАДЬ ЗАДАНИЯ</small><strong>{areaKm2.toLocaleString('ru-RU',{maximumFractionDigits:2})} км²</strong></div></div>
+      <PlanComparison selected={selected} expanded={expandedPlan} onSelect={id=>{onSelect(id);setExpandedPlan(expandedPlan===id?null:id)}} calculating={false} result={result}>{plan&&<div className="result-scenario-details">
+        <div className="result-summary-pills"><span><b>{plan.duration_min} мин</b> завершение</span><span><b>{plan.total_flight_time_min} мин</b> Σ налёт</span><span><b>{Math.round(plan.cost_rub).toLocaleString('ru-RU')} ₽</b> стоимость</span><span><b>{plan.uav_count}</b> БВС</span><span><b>{sortieCount}</b> {sortieLabel}</span></div>
+        {plan.deployment?.required&&<p>Потребуется перебазирование БВС примерно на {plan.deployment.max_distance_km?.toLocaleString('ru-RU')} км; доставка не включена в стоимость.</p>}
+        <div className="result-vehicle-list">{plan.vehicles.map(vehicle=><div key={vehicle.uav_id}><b>{vehicle.uav_name}</b><span>Старт: {vehicle.base_name} · {vehicle.sorties||1} выл. · {vehicle.altitude_m} м AGL · до {vehicle.max_sortie_min?.toFixed(0)||'—'} мин на вылет</span></div>)}</div>
++        <section className="result-timeline-section"><div className="result-section-heading"><div><small>ПОЛЁТ ПО ЭТАПАМ</small><h3>{plan.label} · {sortieCount} {sortieLabel}</h3></div></div>
+          {plan.vehicles.map(vehicle=><div className="result-timeline-row" key={vehicle.uav_id}><div><b>{vehicle.uav_name}</b><span>{vehicle.sorties||1} выл. · до {vehicle.max_sortie_min?.toFixed(0)||"—"} мин на вылет</span></div><div className="compact-phase-timeline">{vehicle.phases?.map((phase,index)=><span key={`${phase.name}-${index}`} style={{flex:Math.max(phase.minutes,2),"--phase-color":["#20b5e5","#71a2bd","#f15a32","#a47dea","#71a2bd","#20b5e5","#899398"][index%7]} as React.CSSProperties} title={`${phase.name}: ${phase.minutes.toFixed(1)} мин`}><b>{phase.minutes.toFixed(0)}</b><small>{phase.name}</small></span>)}</div></div>)}
+          <div className="result-timeline-actions"><div className="result-export"><a href={`/api/missions/${encodeURIComponent(result.mission_id)}/export?plan=${encodeURIComponent(selected)}&format=kml`} download><Download size={15}/> KML</a><a href={`/api/missions/${encodeURIComponent(result.mission_id)}/export?plan=${encodeURIComponent(selected)}&format=geojson`} download><Download size={15}/> GeoJSON</a><a href={`/api/missions/${encodeURIComponent(result.mission_id)}/export?plan=${encodeURIComponent(selected)}&format=gpx`} download><Download size={15}/> GPX</a></div><button type="button" disabled={Boolean(scheduleReason)} onClick={onSchedule}><CalendarClock size={16}/> Назначить в календарь</button></div>
+          {scheduleReason&&<p className="result-schedule-reason">{scheduleReason}</p>}
         </section>
-        {result.airspace&&<aside className={`result-airspace ${routeUnsafe?'requires_correction':result.airspace.status}`}><div className="result-section-heading"><div><small>ВОЗДУШНОЕ ПРОСТРАНСТВО</small><h3>{airspaceLabel}</h3></div><ShieldAlert size={21}/></div><dl><div><dt>Зоны</dt><dd>{result.airspace.conflicts.length}</dd></div><div><dt>ОрВД</dt><dd>{result.airspace.authorities.length}</dd></div><div><dt>Обходы</dt><dd>{plan.airspace_avoidance?.detours||0}</dd></div><div><dt>Слоты</dt><dd>{plan.deconfliction?.departure_slots_applied||0}</dd></div></dl><ul>{routeUnsafe&&<li>Плавный обход с учётом радиуса разворота не найден; назначение заблокировано.</li>}{result.airspace.messages.slice(0,3).map(message=><li key={message}>{message}</li>)}</ul></aside>}
+      </div>}</PlanComparison>
+      <ScenarioComparison result={result}/>
+      {plan && <div className="mission-results-detail">
+        {result.airspace&&<aside className={`result-airspace ${routeUnsafe?'requires_correction':result.airspace.status}`}><div className="result-section-heading"><div><small>ВОЗДУШНОЕ ПРОСТРАНСТВО</small><h3>{airspaceLabel}</h3></div><ShieldAlert size={21}/></div><dl><div><dt>Зоны</dt><dd>{result.airspace.conflicts.length}</dd></div><div><dt>ОрВД</dt><dd>{result.airspace.authorities.length}</dd></div><div><dt>Обходы</dt><dd>{plan.airspace_avoidance?.detours||0}</dd></div><div><dt>Слоты</dt><dd>{plan.deconfliction?.departure_slots_applied||0}</dd></div></dl><p className="result-airspace-procedure"><b>ОрВД:</b> {result.airspace.authorities.length?result.airspace.authorities.map(authority=>authority.name).join('; '):'не определён'}<br/><b>Порядок:</b> {result.airspace.operation_mode==='notification'?'уведомительный':result.airspace.operation_mode==='permission'?'разрешительный':result.airspace.operation_mode==='none'?'не требуется по предварительной оценке':'требует уточнения'}</p><ul>{routeUnsafe&&<li>Плавный обход с учётом радиуса разворота не найден; назначение заблокировано.</li>}{result.airspace.messages.slice(0,3).map(message=><li key={message}>{message}</li>)}</ul></aside>}
         {settlementAssessment&&<aside className={`result-airspace ${settlementAssessment.status==='COVERED'?'clear':'adjustment_required'}`}><div className="result-section-heading"><div><small>ГРАНИЦЫ НАСЕЛЁННЫХ ПУНКТОВ</small><h3>{settlementAssessment.status==='COVERED'?'Покрытие загружено':'Данные загружены не полностью'}</h3></div><MapPin size={21}/></div><dl><div><dt>Участки</dt><dd>{settlementAssessment.tiles_fresh} / {settlementAssessment.tiles_total}</dd></div><div><dt>Пересечения</dt><dd>{settlementAssessment.intersections.length}</dd></div><div><dt>Коридор</dt><dd>±{settlementAssessment.corridor_margin_m} м</dd></div></dl><ul><li>OSM используется для предварительной проверки; юридически значимую границу необходимо подтвердить.</li>{settlementAssessment.intersections.slice(0,5).map(item=><li key={`${item.osm_type}-${item.osm_id}`}>{item.name||'Без названия'}{item.region?` · ${item.region}`:''}{item.district?` · ${item.district}`:''}</li>)}</ul></aside>}
       </div>}
-      <footer><p>{confirmedPlan===selected?`Для календаря подтверждён вариант «${plan.label}».`:'Предпросмотр не назначает вариант. Перед вылетом нужна проверка воздушной обстановки.'}</p><div className="result-footer-actions"><button type="button" className="result-back-button" onClick={onClose}>Вернуться без выбора</button><button type="button" onClick={()=>onConfirm(selected)}>{confirmedPlan===selected?'Выбор подтверждён':`Подтвердить «${plan.label}» для календаря`}</button></div></footer>
     </section>
   </div>
 }
@@ -1391,9 +1394,16 @@ export default function App() {
   const [settlementsVisible,setSettlementsVisible]=useState(true)
   const [settlementCount,setSettlementCount]=useState(0)
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('economy')
-  const [confirmedPlan,setConfirmedPlan]=useState<PlanId|null>(null)
+  const [operationalChecksConfirmed,setOperationalChecksConfirmed]=useState(false)
   const [selectedProduct, setSelectedProduct] = useState<ProductId>('orthophoto')
   const [calculating, setCalculating] = useState(false)
+  const [calculationSeconds,setCalculationSeconds]=useState(0)
+  useEffect(()=>{
+    if(!calculating){setCalculationSeconds(0);return}
+    const started=Date.now()
+    const timer=window.setInterval(()=>setCalculationSeconds(Math.floor((Date.now()-started)/1000)),1000)
+    return()=>window.clearInterval(timer)
+  },[calculating])
   const [user, setUser] = useState<User | null | undefined>(undefined)
   const [systemOk, setSystemOk] = useState(false)
   const [result, setResult] = useState<OptimizationResult | null>(null)
@@ -1651,7 +1661,7 @@ export default function App() {
     setCalculating(true)
     setCalculationError('')
     setResult(null)
-    setConfirmedPlan(null)
+    setOperationalChecksConfirmed(false)
     const product = missionProducts[selectedProduct]
     const selectedPayload = catalogPayloads.find(item=>item.id===selectedPayloadId)
     const opticalSurvey = product.surveyType!=='lidar' && product.surveyType!=='geophysical'
@@ -1717,7 +1727,7 @@ export default function App() {
     setResultsOpen(false)
     setResult(null)
     setActiveOrderId(null)
-    setConfirmedPlan(null)
+    setOperationalChecksConfirmed(false)
     setNotice('Загружены учебный контур и учебная ВПП с курсом 180° и длиной 460 м. Нажмите «Рассчитать»; площадку нужно обследовать перед реальным полётом.')
   }
 
@@ -1733,17 +1743,17 @@ export default function App() {
 
   const addToSchedule = async () => {
     if(!result||scheduledDate<localDateIso())return
-    if(!confirmedPlan||confirmedPlan!==selectedPlan){setNotice('Сначала подтвердите выбранный вариант в результатах расчёта.');return}
-    const plan=result.plans.find(item=>item.id===confirmedPlan)
+    const blocked=calendarBlockReason(result,selectedPlan,scheduledDate,scheduledTime,scheduledMissions,operationalChecksConfirmed)
+    if(blocked){setNotice(blocked);return}
+    const plan=result.plans.find(item=>item.id===selectedPlan)
     if(!plan?.vehicles.length)return
     if(plan.duration_min>720){setNotice('План длиннее рабочего дня: разделите кампанию на дневные задания перед назначением.');return}
     const product=missionProducts[selectedProduct]
     const linkedOrder=orders.find(order=>order.id===activeOrderId)
-    const baseName=launchSites.find(site=>site.id===selectedLaunchSiteId)?.name||(launchPoint?'Полевая точка старта':'Автоматически выбранная площадка')
     const missionGroupId=crypto.randomUUID()
     const entries=plan.vehicles.map((vehicle,index)=>{
       const uav=catalogUavs.find(item=>item.id===vehicle.uav_id)
-      const simulation={missionId:result.mission_id,planId:plan.id,route:vehicle.route,area:area.geometry.type==='Polygon'?area.geometry:undefined,uavType:(uav?.type==='fixed_wing'?'fixed_wing':'multirotor') as 'fixed_wing'|'multirotor',altitudeM:vehicle.altitude_m,color:vehicle.color,baseName,durationSeconds:150,actualDurationMin:vehicle.elapsed_time_min,settlementCoverage:result.settlement_assessments?.[plan.id]?.status}
+      const simulation={missionId:result.mission_id,planId:plan.id,route:vehicle.route,area:area.geometry.type==='Polygon'?area.geometry:undefined,uavType:(uav?.type==='fixed_wing'?'fixed_wing':'multirotor') as 'fixed_wing'|'multirotor',altitudeM:vehicle.altitude_m,color:vehicle.color,baseName:vehicle.base_name,durationSeconds:150,actualDurationMin:vehicle.elapsed_time_min,settlementCoverage:result.settlement_assessments?.[plan.id]?.status}
       return {date:scheduledDate,time:scheduledTime,title:`${linkedOrder?.title||product.title}${plan.vehicles.length>1?` · сектор ${index+1}/${plan.vehicles.length}`:''}`,location:linkedOrder?.location||'Контур задания',uavId:vehicle.uav_id,uavName:vehicle.uav_name,duration:Number((vehicle.elapsed_time_min/60).toFixed(2)),status:'planned' as const,product:selectedProducts.map(id=>missionProducts[id].short).join(' + '),payloadId:selectedPayloadId,areaKm2:Math.max(0.01,Number((areaMetrics.areaKm2/plan.vehicles.length).toFixed(2))),costRub:Math.round(vehicle.cost_rub),source:'planner' as const,orderId:linkedOrder?.id,orderNumber:linkedOrder?.number,customerName:linkedOrder?.customer.name,missionGroupId,simulation}
     })
     let missions:ScheduledMission[]
@@ -1889,11 +1899,12 @@ export default function App() {
         <TopBar user={user} systemOk={systemOk} demoMode={demoMode} onDemoMode={enabled=>{setDemoMode(enabled);setPlayback(null);setSimulationRate(enabled?1:0);setCalendarClock(Date.now());setSelectedUavId(null)}} active={catalogSection || view} onView={(value) => {if(value==='calendar'){setCalendarMode('flights');setCalendarFocusUavId(null);setMaintenanceDraftUavId(null)}setView(value); setCatalogSection(null)}} onOpenCatalog={setCatalogSection} onLogout={logout} />
         {view === 'orders' && !catalogSection && <OrdersWorkspace orders={orders} loadError={ordersLoadError} onOrdersChange={setOrders} onSendToPlanner={sendOrderToPlanner}/>} 
         {view === 'planner' && !catalogSection && <section className="planner-workspace" aria-label="Планировщик заданий">
+          {calculating&&<div className="planner-calculation-overlay" role="status" aria-live="polite"><div className="planner-calculation-progress"><span className="planner-calculation-spinner" aria-hidden="true"/><strong>Строим варианты маршрута</strong><p>Проверяем ограничения, рассчитываем вылеты и сравниваем состав флота. Это может занять некоторое время.</p><small>Прошло {calculationSeconds} с · дождитесь завершения расчёта</small></div></div>}
           <div className="planner-title"><div><span>ПЛАНИРОВАНИЕ / ПРЕДВАРИТЕЛЬНЫЙ РАСЧЁТ</span><h1>Конструктор полётного задания</h1><p>Геометрия → оптика и качество → этапы полёта → сравнение ресурсов.</p></div><div className="planner-title-actions">{result&&<button type="button" className="results-button" onClick={()=>setResultsOpen(true)}><Sparkles size={15}/> Результаты</button>}<button type="button" onClick={()=>setMethodologyOpen(true)}><CircleHelp size={16}/> Методика расчёта</button></div></div>
           {calculationError&&<div className="planner-calculation-error" role="alert"><strong>Маршрут не построен</strong><span>{calculationError}</span></div>}
           {activeOrderId&&orders.find(order=>order.id===activeOrderId)&&<div className="linked-order"><ClipboardList size={16}/><span><small>ЗАЯВКА ЗАКАЗЧИКА</small><strong>{orders.find(order=>order.id===activeOrderId)!.number} · {orders.find(order=>order.id===activeOrderId)!.customer.name}</strong></span><button onClick={()=>{setActiveOrderId(null);setView('orders')}}>Отвязать</button></div>}
           <div className="planner-columns"><div>
-        <MissionPanel missions={scheduledMissions} scheduledDate={scheduledDate} onScheduledDate={value=>{setScheduledDate(value);setResult(null)}} scheduledTime={scheduledTime} onScheduledTime={value=>{setScheduledTime(value);setResult(null)}} deadlineEnabled={deadlineEnabled} onDeadlineEnabled={value=>{setDeadlineEnabled(value);setResult(null)}} deadlineDate={deadlineDate} onDeadlineDate={value=>{setDeadlineDate(value);setResult(null)}} deadlineTime={deadlineTime} onDeadlineTime={value=>{setDeadlineTime(value);setResult(null)}} maxUavs={maxUavs} onMaxUavs={value=>{setMaxUavs(value);setResult(null)}} selectedPlan={selectedPlan} confirmedPlan={confirmedPlan} onOpenResults={()=>setResultsOpen(true)} onSchedule={addToSchedule} lineSpacing={lineSpacing} onLineSpacing={value=>{setLineSpacing(value);setResult(null)}} selectedProducts={selectedProducts} maxAltitude={maxAltitude} onMaxAltitude={value => {setMaxAltitude(value); setResult(null)}} onCalculate={calculate} onLoadEconomicsDemo={loadFleetEconomicsDemo} drawMode={drawMode || calculating} selectedProduct={selectedProduct} planningWeather={planningWeather} onSelectProduct={(product) => {
+        <MissionPanel missions={scheduledMissions} scheduledDate={scheduledDate} onScheduledDate={value=>{setScheduledDate(value);setResult(null)}} scheduledTime={scheduledTime} onScheduledTime={value=>{setScheduledTime(value);setResult(null)}} deadlineEnabled={deadlineEnabled} onDeadlineEnabled={value=>{setDeadlineEnabled(value);setResult(null)}} deadlineDate={deadlineDate} onDeadlineDate={value=>{setDeadlineDate(value);setResult(null)}} deadlineTime={deadlineTime} onDeadlineTime={value=>{setDeadlineTime(value);setResult(null)}} maxUavs={maxUavs} onMaxUavs={value=>{setMaxUavs(value);setResult(null)}} selectedPlan={selectedPlan} operationalChecksConfirmed={operationalChecksConfirmed} onOperationalChecksConfirmed={setOperationalChecksConfirmed} onOpenResults={()=>setResultsOpen(true)} onSchedule={addToSchedule} lineSpacing={lineSpacing} onLineSpacing={value=>{setLineSpacing(value);setResult(null)}} selectedProducts={selectedProducts} maxAltitude={maxAltitude} onMaxAltitude={value => {setMaxAltitude(value); setResult(null)}} onCalculate={calculate} onLoadEconomicsDemo={loadFleetEconomicsDemo} drawMode={drawMode || calculating} selectedProduct={selectedProduct} planningWeather={planningWeather} onSelectProduct={(product) => {
           const profile = missionProducts[product]
           const same = profile.surveyType === missionProducts[selectedProduct].surveyType
           const corridorProduct = product === 'powerline_report'
@@ -1908,7 +1919,7 @@ export default function App() {
           </div><div className="planner-map-column"><PolygonEditor restrictions={airspaceRestrictions} settlements={selectedSettlements} launchSites={launchSites} selectedLaunchSiteId={selectedLaunchSiteId} resultsOverlay={Boolean(result&&resultsOpen)} onLaunchSite={id=>{if(id==='auto'){setSelectedLaunchSiteId(null);setLaunchPoint(null)}else if(id==='custom'){setSelectedLaunchSiteId(null);setLaunchPoint(null)}else{const site=launchSites.find(item=>item.id===id);setSelectedLaunchSiteId(id);if(site)setLaunchPoint([site.lon,site.lat])}setResult(null)}} launch={launchPoint} onLaunch={p=>{setSelectedLaunchSiteId(null);setLaunchPoint(p);setResult(null)}} area={area} onEditing={setDrawMode} onChange={value => {setArea(value); setResult(null)}} routes={selectedRoutes} mode={geometryMode} corridorAllowed={['powerline_report','thermal_map'].includes(selectedProduct)&&selectedProducts.length===1} corridorWidth={corridorWidth} onCorridorWidth={value=>{setCorridorWidth(value);setResult(null)}} onModeChange={mode=>{setGeometryMode(mode);setArea(mode==='corridor'?initialMissionCorridor:initialMissionArea);setResult(null)}} onImport={importMissionFile} onReset={()=>{setGeometryMode('area');setArea(initialMissionArea);setDrawMode(false);setResult(null)}} areaSummary={geometryMode==='corridor'?`${areaMetrics.routeLengthKm.toLocaleString('ru-RU',{maximumFractionDigits:2})} км трассы · ${areaMetrics.areaKm2.toLocaleString('ru-RU',{maximumFractionDigits:2})} км² коридора`:`${areaMetrics.areaKm2.toLocaleString('ru-RU',{maximumFractionDigits:2})} км² · ${areaMetrics.perimeterKm.toLocaleString('ru-RU',{maximumFractionDigits:1})} км периметр`} />
           </div></div>
         {methodologyOpen&&<MethodologyModal onClose={()=>setMethodologyOpen(false)}/>} 
-        {result&&resultsOpen&&<MissionResultsModal result={result} selected={selectedPlan} confirmedPlan={confirmedPlan} onSelect={id=>{setSelectedPlan(id);if(id!==confirmedPlan)setConfirmedPlan(null)}} onConfirm={id=>{setConfirmedPlan(id);setResultsOpen(false);setNotice(`Для календаря подтверждён вариант «${result.plans.find(plan=>plan.id===id)?.label||id}».`)}} onClose={()=>setResultsOpen(false)}/>} 
+        {result&&resultsOpen&&<MissionResultsModal result={result} selected={selectedPlan} areaKm2={areaMetrics.areaKm2} missionTitle={missionProducts[selectedProduct].title} scheduledDate={scheduledDate} scheduledTime={scheduledTime} scheduleReason={calendarBlockReason(result,selectedPlan,scheduledDate,scheduledTime,scheduledMissions,operationalChecksConfirmed)} onSelect={id=>{setSelectedPlan(id);setOperationalChecksConfirmed(false)}} onSchedule={addToSchedule} onClose={()=>setResultsOpen(false)}/>} 
         </section>}
         {view === 'calendar' && !catalogSection && <CalendarDashboard uavs={catalogUavs} missions={replayableMissions} onReplay={openMissionReplay} onCreateMaintenance={addMaintenance} initialMode={calendarMode} focusUavId={calendarFocusUavId} maintenanceDraftUavId={maintenanceDraftUavId} onMaintenanceDraftConsumed={()=>setMaintenanceDraftUavId(null)} />}
         {view==='airspace' && !catalogSection && <ObjectsWorkspace sites={launchSites} onSitesChange={items=>{setLaunchSites(items);const selected=items.find(item=>item.id===selectedLaunchSiteId);if(selected)setLaunchPoint([selected.lon,selected.lat])}} />}

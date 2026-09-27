@@ -6,6 +6,7 @@ from shapely.geometry import shape
 from fastapi.testclient import TestClient
 
 from app import main
+from app.models import MissionRequest
 from app.settlements import SettlementStore, overpass_query, parse_overpass, tile_bbox, tiles_for_bbox
 
 
@@ -50,6 +51,36 @@ class FailingClient:
 
 
 class SettlementTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cached_polygons_reach_planner_before_routing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettlementStore(Path(directory) / "settlements.sqlite")
+            await store.sync_tile((185, 275), FakeClient(relation_payload()))
+            request = MissionRequest(
+                area={"type": "Polygon", "coordinates": [[
+                    [37.10, 55.01], [37.12, 55.01], [37.12, 55.03],
+                    [37.10, 55.03], [37.10, 55.01],
+                ]]},
+                launch_point=(36.98, 55.02),
+            )
+            zones = main._settlement_zones_for_planning(request, store)
+            self.assertEqual(len(zones), 1)
+            self.assertEqual(zones[0]["category"], "settlement")
+            self.assertEqual(zones[0]["name"], "Тестовый посёлок")
+            missed = main._missed_settlement_zones(request, {
+                "plans": [{"vehicles": [{"route": {
+                    "type": "LineString", "coordinates": [[36.98, 55.02], [37.11, 55.02]],
+                }}]}],
+            }, zones, set())
+            self.assertEqual([zone["id"] for zone in missed], [zones[0]["id"]])
+            self.assertEqual(main._missed_settlement_zones(request, {
+                "plans": [{"vehicles": [{"route": {
+                    "type": "LineString", "coordinates": [[36.98, 55.02], [37.11, 55.02]],
+                }}]}],
+            }, zones, {zones[0]["id"]}), [])
+            self.assertEqual(main._settlement_zones_for_planning(
+                request.model_copy(update={"airspace_check": False}), store,
+            ), [])
+
     async def test_overpass_relation_and_required_qgis_fields(self):
         polygons, invalid = parse_overpass(relation_payload())
         self.assertEqual(invalid, 0)

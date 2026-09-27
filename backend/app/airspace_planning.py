@@ -96,7 +96,7 @@ def avoid_line(line: LineString, obstacles, *, _box_fallback: bool = True,
         # Dropping every Nth vertex can cut directly through a concave zone.
         # Simplify only when needed, then inflate and prove containment before
         # allowing those vertices into the graph.
-        while len(candidate.exterior.coords) > 90 and tolerance < 500:
+        while len(candidate.exterior.coords) > 24 and tolerance < 500:
             approximate = polygon.simplify(tolerance, preserve_topology=True)
             expanded = approximate.buffer(tolerance + 3.0, join_style="mitre")
             if expanded.covers(polygon):
@@ -113,6 +113,15 @@ def avoid_line(line: LineString, obstacles, *, _box_fallback: bool = True,
         vertices.extend((float(x), float(y)) for x, y in coordinates)
     # De-duplicate rounded boundary vertices to keep the graph small.
     vertices = list(dict.fromkeys((round(x, 3), round(y, 3)) for x, y in vertices))
+    # The visibility graph tests every pair of vertices. Dense settlement
+    # boundaries can otherwise turn a single detour into minutes of work.
+    if len(vertices) > 256:
+        enclosure = combined.minimum_rotated_rectangle
+        if not enclosure.contains(Point(start)) and not enclosure.contains(Point(end)):
+            fallback, detoured, unresolved = avoid_line(line, enclosure, _box_fallback=False)
+            if not unresolved and fallback.distance(obstacles) >= 0.05:
+                return fallback, detoured, False
+        return line, False, True
     start_index, end_index = vertices.index((round(start[0], 3), round(start[1], 3))), vertices.index((round(end[0], 3), round(end[1], 3)))
     graph: list[list[tuple[int, float]]] = [[] for _ in vertices]
     for left_index, left in enumerate(vertices):

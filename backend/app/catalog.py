@@ -171,8 +171,8 @@ BASES = [
         "has_fuel": True, "status": "open",
     },
     {
-        "id": "base-klin", "name": "Полевой аэродром Клин", "lat": 56.24, "lon": 36.72,
-        "geometry": {"type": "Point", "coordinates": [36.72, 56.24]},
+        "id": "base-klin", "name": "Полевой аэродром Клин", "lat": 56.232, "lon": 36.72,
+        "geometry": {"type": "Point", "coordinates": [36.72, 56.232]},
         "surface": "подготовленный грунт", "runway_length_m": 420, "heading_deg": 64,
         "supports": ["fixed_wing", "multirotor", "vtol"], "has_charging": True,
         "has_fuel": False, "status": "open",

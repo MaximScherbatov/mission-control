@@ -101,6 +101,7 @@ export function importedCollection(fileName:string,text:string):GeoJSON.FeatureC
   }
   const xml=new DOMParser().parseFromString(text,'application/xml')
   if(xml.querySelector('parsererror'))throw new Error('Некорректный XML-файл')
+  if(extension==='kml'&&xml.querySelector('Document ExtendedData Data[name="schema_name"] value')?.textContent?.trim()==='citymetrics-flight-mission')throw new Error('Это KML полётного задания, а не справочник объектов. Импорт в слой объектов отменён.')
   const features:GeoJSON.Feature[]=[]
   if(extension==='kml'){
     xml.querySelectorAll('Placemark').forEach((placemark,index)=>{
@@ -257,13 +258,11 @@ export function AirspaceWorkspace({initialCategory='all',embedded=false,searchQu
     try{
       if(form.category==='settlement'){await importSettlementFile(file);return}
       const collection=importedCollection(file.name,await file.text())
-      const kmlObstacleSet=file.name.toLocaleLowerCase('ru-RU').includes('препятств')||collection.features.some(feature=>Boolean(feature.properties?.altitude_mode||feature.properties?.obstacle_type))
-      const importCategory:Category=kmlObstacleSet?'obstacle':form.category
-      if(importCategory!==form.category)setForm(value=>({...value,category:importCategory}))
+      const importCategory:Category=form.category
       const response=await fetch('/api/airspace/zones/import',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:importCategory,source_name:file.name,collection})})
       const body=await response.json().catch(()=>({}))
       if(!response.ok)throw new Error(typeof body.detail==='string'?body.detail:'Импорт отклонён')
-      setCreating(false);setNotice(`Импортировано высотных объектов: ${body.imported}${body.skipped?`; пропущено: ${body.skipped}`:''}`);await refresh();window.dispatchEvent(new Event('airspace-updated'))
+      setCreating(false);setNotice(`Импортировано в слой «${categoryMeta[importCategory].label}»: ${body.imported}${body.skipped?`; пропущено: ${body.skipped}`:''}`);await refresh();window.dispatchEvent(new Event('airspace-updated'))
     }catch(error){setNotice(error instanceof Error?error.message:'Файл не удалось импортировать')}
   }
   const importSettlementFile=async(file:File)=>{

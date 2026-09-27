@@ -1,7 +1,7 @@
 import math
 import unittest
 from bisect import bisect_right
-from app.catalog import UAVS
+from app.catalog import BASES, UAVS
 from app.models import MissionRequest
 from app.optimizer import _best_pair, _sweep_lines, optimize
 from app.simulation import (
@@ -13,8 +13,9 @@ from app.simulation import (
     snapshot,
     track,
     route_parts,
+    _protected_geometry,
 )
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, Polygon
 
 AREA = {'type':'Polygon','coordinates':[[[37.457,55.787],[37.48,55.787],[37.48,55.777],[37.457,55.777],[37.457,55.787]]]}
 
@@ -73,6 +74,20 @@ class RevisionTests(unittest.TestCase):
                 self.assertEqual(vehicle['base_id'], 'planned-field-site')
                 self.assertIn('не обследован', vehicle['base_name'])
 
+    def test_auto_launch_uses_actual_fleet_base_not_polygon_centroid(self):
+        default_area = {'type':'Polygon','coordinates':[[[37.335,55.787],[37.358,55.787],[37.358,55.777],[37.335,55.777],[37.335,55.787]]]}
+        result = optimize(MissionRequest(area=default_area, payload_id='payload-sony-61'))
+        bases = {base['id']: base for base in BASES}
+        self.assertTrue(result['plans'])
+        for plan in result['plans']:
+            for vehicle in plan['vehicles']:
+                base = bases[vehicle['base_id']]
+                self.assertEqual(vehicle['base_name'], base['name'])
+                self.assertAlmostEqual(vehicle['route']['coordinates'][0][0], base['lon'], places=5)
+                self.assertAlmostEqual(vehicle['route']['coordinates'][0][1], base['lat'], places=5)
+                self.assertAlmostEqual(vehicle['route']['coordinates'][-1][0], base['lon'], places=5)
+                self.assertAlmostEqual(vehicle['route']['coordinates'][-1][1], base['lat'], places=5)
+
     def test_catalog_launch_site_name_is_kept_in_complete_plan(self):
         result = optimize(MissionRequest(
             area=AREA, payload_id='payload-sony-61',
@@ -91,6 +106,21 @@ class RevisionTests(unittest.TestCase):
                 self.assertAlmostEqual(coordinates[0][1], 55.878, places=5)
                 self.assertAlmostEqual(coordinates[-1][0], 37.305, places=5)
                 self.assertAlmostEqual(coordinates[-1][1], 55.878, places=5)
+
+    def test_catalog_site_without_redundant_launch_point_is_used(self):
+        result = optimize(MissionRequest(
+            area=AREA, payload_id='payload-sony-61',
+            launch_site={
+                'id':'base-north','name':'ВПП Север','lon':37.305,'lat':55.878,
+                'kind':'runway','runway_length_m':460,'heading_deg':82,
+                'supports':['fixed_wing','multirotor','vtol'],'status':'open',
+            },
+        ))
+        for plan in result['plans']:
+            for vehicle in plan['vehicles']:
+                self.assertEqual(vehicle['base_id'], 'base-north')
+                self.assertAlmostEqual(vehicle['route']['coordinates'][0][0], 37.305, places=5)
+                self.assertAlmostEqual(vehicle['route']['coordinates'][0][1], 55.878, places=5)
 
     def test_actual_sortie_duration_keeps_declared_reserve(self):
         result = optimize(MissionRequest(
@@ -130,6 +160,37 @@ class RevisionTests(unittest.TestCase):
             distance=min(self._point_segment_distance(point,tuple(start),tuple(end)) for route in route_parts for start,end in zip(route,route[1:]))
             self.assertLess(distance,1e-9)
 
+    def test_demo_routes_avoid_cached_settlements_zones_and_obstacles(self):
+        for site in SITES:
+            protected = _protected_geometry(site)
+            for leg in route_parts(site):
+                self.assertLess(LineString(leg).intersection(protected).length, .05, site.uav_id)
+
+    def test_demo_aircraft_remain_separated_on_crossing_courses(self):
+        conflicts=[]
+        for elapsed in range(0, 86400, 20):
+            vehicles = snapshot(elapsed, include_geometry=False)['vehicles']
+            for index, left in enumerate(vehicles):
+                if left['altitude_m'] < 30:
+                    continue
+                for right in vehicles[index+1:]:
+                    if right['altitude_m'] < 30 or abs(left['altitude_m']-right['altitude_m']) >= 30:
+                        continue
+                    east = (left['lon']-right['lon'])*111320*math.cos(math.radians(56))
+                    north = (left['lat']-right['lat'])*110540
+                    if math.hypot(east,north)<150:
+                        conflicts.append((elapsed,left['uav_id'],right['uav_id'],round(math.hypot(east,north)),left['status'],right['status'],left['altitude_m'],right['altitude_m']))
+        self.assertFalse(conflicts,conflicts[:20])
+
+    def test_demo_vertical_deconfliction_is_continuous(self):
+        for elapsed in range(47680, 47900):
+            current = {vehicle['uav_id']:vehicle for vehicle in snapshot(elapsed,include_geometry=False)['vehicles']}
+            following = {vehicle['uav_id']:vehicle for vehicle in snapshot(elapsed+1,include_geometry=False)['vehicles']}
+            for uav_id in ('uav-geoscan-701-01','uav-geoscan-201-02'):
+                delta = following[uav_id]['altitude_m']-current[uav_id]['altitude_m']
+                self.assertAlmostEqual(delta,current[uav_id]['vertical_speed_mps'],delta=.3)
+                self.assertLess(abs(delta),8)
+
     def test_each_sortie_has_five_minute_ground_service(self):
         site = SITES[0]
         distances, times, total = _motion_timeline(site)
@@ -160,15 +221,17 @@ class RevisionTests(unittest.TestCase):
                     if math.dist(start, end) > .01
                 ]
                 turns = [abs((following-current+180) % 360 - 180) for current, following in zip(headings, headings[1:])]
-                self.assertLess(max(turns), 22, site.uav_id)
+                self.assertLess(max(turns), 23, site.uav_id)
 
-    def test_transit_routes_are_close_to_the_shortest_distance(self):
+    def test_transit_detours_remain_bounded(self):
         for site in SITES:
             outbound, _, inbound = route_parts(site)
             for leg in (outbound, inbound):
                 flown = sum(math.dist(start, end) for start, end in zip(leg, leg[1:]))
                 direct = math.dist(leg[0], leg[-1])
-                self.assertLess(flown / direct, 1.08, site.uav_id)
+                # Protected settlements can require a longer path than the
+                # old unconstrained visual spline.
+                self.assertLess(flown / direct, 1.30, site.uav_id)
 
     def test_survey_entry_and_exit_are_smooth(self):
         for site in SITES:

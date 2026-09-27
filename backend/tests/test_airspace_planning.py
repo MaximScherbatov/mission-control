@@ -1,8 +1,10 @@
 import unittest
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString, Point, Polygon
+from shapely.ops import unary_union
 
 from app.airspace_planning import _altitude_relevant, _time_relevant, avoid_line, prepare_airspace_context
 
@@ -39,6 +41,15 @@ def zone(category, geometry, **properties):
 
 
 class AirspacePlanningTests(unittest.TestCase):
+    def test_dense_obstacles_use_a_bounded_safe_detour(self):
+        obstacles = unary_union([Point(x, 0).buffer(30) for x in range(200, 4000, 200)])
+        started = time.perf_counter()
+        route, detoured, unresolved = avoid_line(LineString([(0, 0), (4200, 0)]), obstacles)
+        self.assertLess(time.perf_counter() - started, 5)
+        self.assertTrue(detoured)
+        self.assertFalse(unresolved)
+        self.assertGreater(route.distance(obstacles), 0)
+
     def test_visibility_graph_builds_safe_detour(self):
         obstacle = Polygon([(4, -1), (6, -1), (6, 1), (4, 1)])
         route, detoured, unresolved = avoid_line(LineString([(0, 0), (10, 0)]), obstacle)

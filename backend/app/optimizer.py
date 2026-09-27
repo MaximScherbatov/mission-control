@@ -677,11 +677,9 @@ def _build_plan(
         reference_lonlat = (request.launch_site.lon, request.launch_site.lat)
     elif request.launch_point:
         reference_lonlat = request.launch_point
-    elif chosen[0].uav['type'] == 'fixed_wing':
+    else:
         first_base = _base_for(chosen[0].uav)
         reference_lonlat = (first_base['lon'], first_base['lat'])
-    else:
-        reference_lonlat = None
     if reference_lonlat is not None:
         projected = Transformer.from_crs('EPSG:4326', metric_crs, always_xy=True).transform(*reference_lonlat)
         reference_point = (projected[0], projected[1])
@@ -771,14 +769,9 @@ def _build_plan(
             base = request.launch_site.model_dump()
         elif request.launch_point:
             base = {'id':'planned-field-site','name':'Планируемый полевой старт (не обследован)','lon':request.launch_point[0],'lat':request.launch_point[1]}
-        if request.launch_point:
-            metric_base = transform(Transformer.from_crs("EPSG:4326", metric_crs, always_xy=True).transform, Point(base["lon"], base["lat"]))
-        elif pair.uav['type'] == 'multirotor':
-            metric_base = Point(list(_line_parts(corridor)[0].coords)[0]) if corridor is not None else polygon.centroid
-            field_site = transform(to_wgs84, metric_base)
-            base = {'id':'assumed-mobile-site','name':'Расчётная мобильная площадка у объекта (требует обследования)','lon':field_site.x,'lat':field_site.y}
-        else:
-            metric_base = transform(Transformer.from_crs("EPSG:4326", metric_crs, always_xy=True).transform, Point(base["lon"], base["lat"]))
+        # Auto mode uses the aircraft's actual catalog base. A provisional
+        # mobile start at the mission centroid must never appear as a selected site.
+        metric_base = transform(Transformer.from_crs("EPSG:4326", metric_crs, always_xy=True).transform, Point(base["lon"], base["lat"]))
         base_point = (metric_base.x, metric_base.y)
         legs = _select_strip_sequence(legs, base_point, transit_obstacles, turn_radius_m)
         runway_direction = None
@@ -1216,7 +1209,7 @@ def _build_plan(
             f"Для трасс ближе {request.vehicle_separation_m:.0f} м назначены разнесённые слоты старта; перед вылетом требуется проверка 4D-траекторий.",
             "Стоимость = эксплуатация + энергия + ТО + батареи + экипаж + подготовка вылетов + мобилизация бортов; тарифы демонстрационные. Доставка к удалённой площадке не включена.",
             "Перелёты рассчитаны консервативно по удалённейшей точке сектора; ветер принят встречным. Это верхняя оценка времени, не прогноз погоды.",
-            "Для мультикоптера без заданной точки старта принята мобильная площадка у объекта; перед полётом она требует обследования и согласования.",
+            "При автоподборе используется штатная площадка выбранного БВС из справочника.",
             "Запас времени полёта 30% в надёжном варианте, 22% в остальных; вероятность отказа не оценивается.",
         ],
     }
@@ -1269,20 +1262,12 @@ def optimize(request: MissionRequest, airspace_zones: list[dict[str, Any]] | Non
             origin = (request.launch_site.lon, request.launch_site.lat)
         elif request.launch_point:
             origin = request.launch_point
-        elif pair.uav['type'] == 'multirotor':
-            return 0.0  # Local mobile start is allowed only near the fleet's current base.
         else:
             home = _base_for(pair.uav)
             origin = (home['lon'], home['lat'])
         return _haversine_m(origin, target) / 1000
 
     pairs = compatible_pairs
-    if request.launch_point is None:
-        pairs = [pair for pair in pairs if pair.uav['type'] != 'multirotor' or
-                 _haversine_m((_base_for(pair.uav)['lon'], _base_for(pair.uav)['lat']), target) / 1000
-                 <= AUTO_MOBILE_DEPLOYMENT_RADIUS_KM]
-        if not pairs:
-            raise ValueError('Объект далеко от баз флота: автоматическая мобильная площадка без доставки БВС не допускается. Укажите местную площадку или точку старта и отдельно подтвердите перебазирование.')
     nearest_distance_km = min(origin_distance_km(pair) for pair in pairs)
     optimistic_roundtrip_km = max(
         max(0.0, pair.uav['endurance_min'] * 60 * .78 - pair.altitude_m / (3.0 if pair.uav['type'] == 'multirotor' else 2.5)

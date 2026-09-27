@@ -2,14 +2,23 @@
 from __future__ import annotations
 
 import math
+import os
 import time
 from bisect import bisect_right
 from functools import lru_cache
 from typing import NamedTuple
 
+from shapely.geometry import LineString, Point, shape
+from shapely.ops import transform, unary_union
+
+from .airspace import bbox_intersects, load_seed_zones
+from .airspace_planning import avoid_line
+from .settlements import DEFAULT_DB, SettlementStore
+
 START = time.monotonic()
 GROUND_SERVICE_SECONDS = 5 * 60
 RUNWAY_HEADINGS = {
+    'Демо-площадка южнее Клина': 64,
     'Полевой аэродром Клин': 64,
     'Аэродром Дмитров': 82,
     'Площадка Яхрома': 90,
@@ -41,16 +50,16 @@ class Site(NamedTuple):
 # separate lateral corridors; controlled encounters are parallel and vertically
 # separated rather than drawn on top of one another.
 SITES = [
-    Site(36.81, 56.285, '#f15a32', 'uav-geoscan-201-01', 'Геоскан 201 · 01', 'fixed_wing', 84, 150, 'Ортофото · Истринский лес', 36.72, 56.24, 'Полевой аэродром Клин', 'облёт запретной зоны UUP408', .02, ((36.765, 56.255), (36.785, 56.270))),
-    Site(36.86, 56.175, '#22b5e5', 'uav-geoscan-401-geo', 'Геоскан 401 · Геодезия', 'multirotor', 38, 95, 'Исполнительная съёмка · водозабор', 36.72, 56.24, 'Полевой аэродром Клин', 'точечное препятствие · безопасный радиус 80 м', .20, ((36.775, 56.215), (36.820, 56.205))),
+    Site(36.81, 56.285, '#f15a32', 'uav-geoscan-201-01', 'Геоскан 201 · 01', 'fixed_wing', 84, 150, 'Ортофото · Истринский лес', 36.72, 56.232, 'Полевой аэродром Клин', 'облёт ограничений по загруженным данным', .02, ((36.765, 56.255), (36.785, 56.270))),
+    Site(36.86, 56.175, '#22b5e5', 'uav-geoscan-401-geo', 'Геоскан 401 · Геодезия', 'multirotor', 38, 95, 'Исполнительная съёмка · водозабор', 36.72, 56.232, 'Полевой аэродром Клин', 'облёт ограничений по загруженным данным', .20, ((36.775, 56.215), (36.820, 56.205))),
     Site(37.07, 56.305, '#8c7cff', 'uav-geoscan-gemini-01', 'Геоскан Gemini · 01', 'multirotor', 34, 78, 'Теплотрасса · северный участок', 36.95, 56.35, 'Площадка Яхрома', 'коридорная ИК-съёмка', .48, ((37.005, 56.335), (37.035, 56.320))),
     Site(37.18, 56.205, '#23b26d', 'uav-geoscan-701-01', 'Геоскан 701 · 01', 'fixed_wing', 98, 165, 'ЛЭП · западный коридор', 37.35, 56.25, 'Аэродром Дмитров', 'встречное движение: северный коридор · эшелон 165 м', .54, ((37.305, 56.255), (37.250, 56.245), (37.205, 56.228))),
-    Site(37.31, 56.215, '#f4a340', 'uav-geoscan-201-02', 'Геоскан 201 · 02', 'fixed_wing', 82, 135, 'NDVI · опытные поля', 37.35, 56.25, 'Аэродром Дмитров', 'юго-восточный коридор · эшелон 135 м', .72, ((37.372, 56.238), (37.360, 56.216), (37.335, 56.205))),
+    Site(37.31, 56.215, '#f4a340', 'uav-geoscan-201-02', 'Геоскан 201 · 02', 'fixed_wing', 82, 135, 'NDVI · опытные поля', 37.35, 56.25, 'Аэродром Дмитров', 'юго-восточный коридор · эшелон 135 м', .94, ((37.372, 56.238), (37.360, 56.216), (37.335, 56.205))),
     Site(37.47, 56.320, '#e9699f', 'uav-geoscan-401-lidar', 'Геоскан 401 · Лидар', 'multirotor', 32, 110, 'LiDAR · карьер', 37.35, 56.25, 'Аэродром Дмитров', 'облёт высотной мачты', .989, ((37.395, 56.285), (37.430, 56.300))),
     Site(37.58, 56.225, '#56c5b0', 'uav-geoscan-401-mag', 'Геоскан 401 · Геофизика', 'multirotor', 28, 70, 'Магнитная съёмка · полигон', 37.55, 56.27, 'Площадка Сергиев Посад', 'восточный коридор · обход ретранслятора', .08, ((37.590, 56.262), (37.612, 56.244), (37.602, 56.228), (37.565, 56.220))),
     Site(37.72, 56.300, '#5e92f3', 'uav-geoscan-gemini-ms', 'Геоскан Gemini · МС', 'multirotor', 36, 90, 'Мультиспектр · лесной квартал', 37.55, 56.27, 'Площадка Сергиев Посад', 'восточный коридор вылета · эшелон 90 м', .49, ((37.610, 56.285), (37.665, 56.298))),
-    Site(37.43, 56.125, '#cf6fe6', 'uav-geoscan-gemini-02', 'Геоскан Gemini · 02', 'multirotor', 35, 120, '3D-модель · промышленная зона', 37.55, 56.27, 'Площадка Сергиев Посад', 'юго-западный коридор · эшелон 120 м', .70, ((37.510, 56.252), (37.478, 56.212), (37.450, 56.168))),
-    Site(37.20, 56.085, '#9fbe3f', 'uav-geoscan-201-03', 'Геоскан 201 · 03', 'fixed_wing', 86, 145, 'Ортофото · резервный участок', 37.35, 56.25, 'Аэродром Дмитров', 'восточный обход · эшелон 145 м', .985, ((37.415, 56.238), (37.438, 56.182), (37.392, 56.128), (37.305, 56.092))),
+    Site(37.43, 56.125, '#cf6fe6', 'uav-geoscan-gemini-02', 'Геоскан Gemini · 02', 'multirotor', 35, 120, '3D-модель · промышленная зона', 37.55, 56.27, 'Площадка Сергиев Посад', 'юго-западный коридор · эшелон 120 м', .77, ((37.510, 56.252), (37.478, 56.212), (37.450, 56.168))),
+    Site(37.30, 56.12, '#9fbe3f', 'uav-geoscan-201-03', 'Геоскан 201 · 03', 'fixed_wing', 86, 145, 'Ортофото · резервный участок', 37.35, 56.25, 'Аэродром Дмитров', 'восточный обход · эшелон 145 м', .985, ((37.415, 56.238), (37.438, 56.182), (37.392, 56.128), (37.305, 56.092))),
 ]
 
 
@@ -69,6 +78,28 @@ def _survey_dimensions(site: Site) -> tuple[float, float, int]:
     return radius, half, 12
 
 
+@lru_cache(maxsize=1)
+def _seed_obstacles():
+    return tuple(zone for zone in load_seed_zones() if zone['category'] in {'prohibited', 'danger', 'obstacle'} and zone.get('enabled', True))
+
+
+@lru_cache(maxsize=len(SITES))
+def _protected_geometry(site: Site):
+    bounds = (min(site.lon, site.base_lon)-.07, min(site.lat, site.base_lat)-.07,
+              max(site.lon, site.base_lon)+.07, max(site.lat, site.base_lat)+.07)
+    pieces = []
+    def project(geometry):
+        return transform(lambda lon, lat, z=None: local(site, lon, lat), shape(geometry))
+    store = SettlementStore(os.getenv('SETTLEMENT_DB_PATH') or DEFAULT_DB)
+    for item in store.polygons(bounds):
+        pieces.append(project(item['geometry']).buffer(100))
+    for zone in _seed_obstacles():
+        if bbox_intersects(zone['bbox'], list(bounds)):
+            margin = {'prohibited':300, 'danger':150, 'obstacle':70}[zone['category']]
+            pieces.append(project(zone['geometry']).buffer(margin))
+    return unary_union(pieces) if pieces else None
+
+
 def _survey_track(site: Site) -> list[tuple[float, float]]:
     radius, half, rows = _survey_dimensions(site)
     points: list[tuple[float, float]] = [(-half, -rows * radius)]
@@ -79,7 +110,18 @@ def _survey_track(site: Site) -> list[tuple[float, float]]:
         if row < rows - 1:
             center_y = y + radius
             points.extend((side * half + side * radius * math.cos(-math.pi/2 + i*math.pi/30), center_y + radius * math.sin(-math.pi/2 + i*math.pi/30)) for i in range(1, 31))
-    return points
+    protected = _protected_geometry(site)
+    if protected is None:
+        return points
+    # Keep the demonstration coverage near its named location, but never
+    # display a survey strip through a cached protected polygon.
+    offsets = [(x, y) for x in range(-3600, 3601, 400) for y in range(-3600, 3601, 400)]
+    offsets.sort(key=lambda offset: offset[0]**2 + offset[1]**2)
+    for dx, dy in offsets:
+        shifted = [(x+dx, y+dy) for x, y in points]
+        if not LineString(shifted).intersects(protected):
+            return shifted
+    raise ValueError(f'Для демо-съёмки {site.uav_id} нет свободного контура около объекта')
 
 
 def _chaikin(points: list[tuple[float, float]], iterations: int = 4) -> list[tuple[float, float]]:
@@ -104,6 +146,32 @@ def _cubic_bezier(start, control_1, control_2, end, samples: int = 36):
     ]
 
 
+def _round_corners(points: list[tuple[float, float]], radius: float) -> list[tuple[float, float]]:
+    if len(points) < 3:
+        return points
+    result = [points[0]]
+    for previous, vertex, following in zip(points, points[1:], points[2:]):
+        incoming = math.dist(previous, vertex)
+        outgoing = math.dist(vertex, following)
+        if min(incoming, outgoing) < 1:
+            result.append(vertex)
+            continue
+        u = ((vertex[0]-previous[0])/incoming, (vertex[1]-previous[1])/incoming)
+        v = ((following[0]-vertex[0])/outgoing, (following[1]-vertex[1])/outgoing)
+        turn = math.acos(max(-1.0, min(1.0, u[0]*v[0]+u[1]*v[1])))
+        if turn < .03:
+            result.append(vertex)
+            continue
+        trim = min(radius*math.tan(turn/2), incoming*.35, outgoing*.35)
+        start = (vertex[0]-u[0]*trim, vertex[1]-u[1]*trim)
+        end = (vertex[0]+v[0]*trim, vertex[1]+v[1]*trim)
+        result.append(start)
+        result.extend(_cubic_bezier(start, vertex, vertex, end, samples=12)[1:])
+    result.append(points[-1])
+    return result
+
+
+@lru_cache(maxsize=len(SITES))
 def route_parts(site: Site) -> tuple[list[tuple[float, float]], list[tuple[float, float]], list[tuple[float, float]]]:
     """Build short transit legs with tangent joins into and out of the survey."""
     survey = _survey_track(site)
@@ -150,6 +218,34 @@ def route_parts(site: Site) -> tuple[list[tuple[float, float]], list[tuple[float
         base,
         samples=56,
     )
+    protected = _protected_geometry(site)
+    if protected is not None:
+        if protected.contains(Point(base)):
+            raise ValueError(f'Демонстрационная площадка {site.base_name} находится внутри ограничений')
+        for label, path in (('вылет', outbound), ('возврат', inbound)):
+            safe_path = None
+            for extra_clearance in (0, 60, 140):
+                guard = protected.buffer(extra_clearance) if extra_clearance else protected
+                for keep in (12, 8, 4, 2):
+                    prefix, suffix = path[:keep], path[-keep:]
+                    if LineString(prefix).intersects(guard) or LineString(suffix).intersects(guard):
+                        continue
+                    detour, _, unresolved = avoid_line(LineString([prefix[-1], suffix[0]]), guard, _search_margin=500)
+                    if unresolved:
+                        continue
+                    controls = prefix + list(detour.coords)[1:-1] + suffix
+                    candidate = LineString(_round_corners(controls, 180 if site.uav_type == 'fixed_wing' else 35))
+                    if candidate.intersection(protected).length < .05:
+                        safe_path = list(candidate.coords)
+                        break
+                if safe_path is not None:
+                    break
+            if safe_path is None:
+                raise ValueError(f'Не найден безопасный демонстрационный {label}: {site.uav_id}')
+            if label == 'вылет':
+                outbound = safe_path
+            else:
+                inbound = safe_path
     return outbound, survey, inbound
 
 
@@ -178,9 +274,24 @@ def sample(points: list[tuple[float, float]], distance: float):
     return points[0], 90, 0, total
 
 
+@lru_cache(maxsize=1)
+def _available_demo_sites() -> tuple[tuple[Site, ...], tuple[str, ...]]:
+    available, warnings = [], []
+    for site in SITES:
+        try:
+            route_parts(site)
+        except ValueError as error:
+            # Cached geography can differ between installations. Never send
+            # an unverified demo route just to keep every icon on the map.
+            warnings.append(str(error))
+        else:
+            available.append(site)
+    return tuple(available), tuple(warnings)
+
+
 def geometry():
     features = []
-    for site in SITES:
+    for site in _available_demo_sites()[0]:
         survey = _survey_track(site)
         xs, ys = zip(*survey)
         ring = [geographic(site, x, y) for x, y in ((min(xs)-55,min(ys)-55),(max(xs)+55,min(ys)-55),(max(xs)+55,max(ys)+55),(min(xs)-55,max(ys)+55),(min(xs)-55,min(ys)-55))]
@@ -250,11 +361,37 @@ def simulation_elapsed() -> float:
     return time.monotonic() - START
 
 
+def _deconflicted_altitudes(sites: tuple[Site, ...], positions: list[tuple[float, float]],
+                            altitudes: list[float]) -> list[float]:
+    separated = altitudes.copy()
+    for _ in range(2):
+        for left, first in enumerate(sites):
+            for right in range(left+1, len(sites)):
+                if min(altitudes[left], altitudes[right]) <= 0:
+                    continue
+                east = (positions[left][0]-positions[right][0])*111320*math.cos(math.radians(56))
+                north = (positions[left][1]-positions[right][1])*110540
+                distance = math.hypot(east, north)
+                if distance >= 300:
+                    continue
+                higher = left if first.altitude_m >= sites[right].altitude_m else right
+                other = right if higher == left else left
+                proximity = max(0.0, min(1.0, (300-distance)/150))
+                climb = max(0.0, min(1.0, min(altitudes[left],altitudes[right])/15))
+                blend = proximity*proximity*(3-2*proximity)*climb
+                target = max(separated[higher], separated[other]+40)
+                separated[higher] = max(separated[higher], altitudes[higher] + (target-altitudes[higher])*blend)
+    return separated
+
+
 def snapshot(elapsed=None, simulation_rate: float = 1, include_geometry: bool = True):
     elapsed = time.monotonic() - START if elapsed is None else elapsed
     vehicles = []
     route_features = []
-    for index, site in enumerate(SITES):
+    next_positions = []
+    next_altitudes = []
+    available_sites, routing_warnings = _available_demo_sites()
+    for index, site in enumerate(available_sites):
         points, out_end, survey_end = route_profile(site)
         if include_geometry:
             outbound, survey, inbound = route_parts(site)
@@ -270,10 +407,12 @@ def snapshot(elapsed=None, simulation_rate: float = 1, include_geometry: bool = 
             phase, phase_label, altitude, speed = _phase(site, progress, total, out_end, survey_end)
         next_distance, next_servicing, _ = _distance_at_time(site, elapsed + 1)
         forward_distance = 0 if servicing or next_servicing else (next_distance - distance) % total
-        _, next_heading, next_progress, _ = sample(points, distance + forward_distance)
+        next_position, next_heading, next_progress, _ = sample(points, distance + forward_distance)
         _, _, next_altitude, _ = _phase(site, next_progress, total, out_end, survey_end)
         if next_servicing:
             next_altitude = 0.0
+        next_positions.append(tuple(geographic(site, *next_position)))
+        next_altitudes.append(next_altitude)
         vertical_speed = next_altitude - altitude
         turn_rate = math.radians((next_heading - heading + 180) % 360 - 180)
         roll_limit = 32 if site.uav_type == 'fixed_wing' else 22
@@ -297,7 +436,18 @@ def snapshot(elapsed=None, simulation_rate: float = 1, include_geometry: bool = 
                 {'type':'Feature','properties':{**common,'kind':'coverage','direction':'survey'},'geometry':{'type':'LineString','coordinates':[geographic(site,*point) for point in survey]}},
                 {'type':'Feature','properties':{**common,'kind':'transit','direction':'inbound'},'geometry':{'type':'LineString','coordinates':[geographic(site,*point) for point in inbound]}},
             ])
-    packet = {'type':'fleet_telemetry','simulation_rate':simulation_rate,'vehicles':vehicles}
+    current_positions = [(vehicle['lon'],vehicle['lat']) for vehicle in vehicles]
+    current_altitudes = _deconflicted_altitudes(available_sites,current_positions,[vehicle['altitude_m'] for vehicle in vehicles])
+    future_altitudes = _deconflicted_altitudes(available_sites,next_positions,next_altitudes)
+    for index, vehicle in enumerate(vehicles):
+        correction = current_altitudes[index]-vehicle['altitude_m']
+        vehicle['altitude_m'] = round(current_altitudes[index], 1)
+        vehicle['vertical_speed_mps'] = round(future_altitudes[index]-current_altitudes[index], 1)
+        if correction > 5:
+            vehicle['phase_label'] += ' · эшелонирование'
+        vehicle['pitch_deg'] = round(max(-10,min(10,math.degrees(math.atan2(vehicle['vertical_speed_mps'],max(vehicle['speed_kmh']/3.6,.5))))),1)
+    packet = {'type':'fleet_telemetry','simulation_rate':simulation_rate,'vehicles':vehicles,
+              'routing_warnings':list(routing_warnings)}
     if include_geometry:
         packet.update(areas=geometry(), routes={'type':'FeatureCollection','features':route_features})
     return packet

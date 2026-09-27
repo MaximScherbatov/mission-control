@@ -17,7 +17,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Res
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pyproj import CRS, Transformer
-from shapely.geometry import shape
+from shapely.geometry import LineString, shape
 from shapely.ops import transform, unary_union
 
 from .catalog import BASES, OPTICS, TECHNOLOGY_PROFILES, UAVS, USERS
@@ -469,6 +469,78 @@ async def _all_airspace_zones(request: Request) -> list[dict]:
                FROM airspace_zones ORDER BY category, code NULLS LAST, name"""
         )
     return [_airspace_row(row) for row in rows]
+
+
+def _settlement_zones_for_planning(payload: MissionRequest, store: SettlementStore) -> list[dict]:
+    """Use only cached boundaries; public Overpass is never awaited by planning."""
+    if not payload.airspace_check:
+        return []
+    area = shape(payload.area.get("geometry", payload.area))
+    west, south, east, north = area.bounds
+    origins = (
+        [(payload.launch_site.lon, payload.launch_site.lat)] if payload.launch_site else
+        [payload.launch_point] if payload.launch_point else
+        [(base["lon"], base["lat"]) for base in BASES]
+    )
+    bounds = (
+        min(west, *(point[0] for point in origins)) - .15,
+        min(south, *(point[1] for point in origins)) - .15,
+        max(east, *(point[0] for point in origins)) + .15,
+        max(north, *(point[1] for point in origins)) + .15,
+    )
+    zones = []
+    for item in store.polygons(bounds):
+        geometry = item["geometry"]
+        if geometry.get("type") not in {"Polygon", "MultiPolygon"}:
+            continue
+        zones.append({
+            "id": f"settlement:{item['osm_type']}:{item['osm_id']}",
+            "category": "settlement", "name": item["name"] or "Населённый пункт",
+            "code": None, "geometry": geometry, "bbox": geometry_bbox(geometry),
+            "enabled": True, "source_name": item["source"], "properties": {},
+        })
+    return zones
+
+
+def _settlement_routing_crs(payload: MissionRequest) -> CRS:
+    area = shape(payload.area.get("geometry", payload.area))
+    longitude, latitude = area.centroid.x, area.centroid.y
+    utm_zone = min(60, max(1, int((longitude + 180) // 6) + 1))
+    return CRS.from_epsg((32600 if latitude >= 0 else 32700) + utm_zone)
+
+
+def _initial_settlement_zones(payload: MissionRequest, zones: list[dict]) -> list[dict]:
+    if not zones:
+        return []
+    area = shape(payload.area.get("geometry", payload.area))
+    center = area.centroid
+    origins = (
+        [(payload.launch_site.lon, payload.launch_site.lat)] if payload.launch_site else
+        [payload.launch_point] if payload.launch_point else
+        [(base["lon"], base["lat"]) for base in BASES]
+    )
+    to_metric = Transformer.from_crs("EPSG:4326", _settlement_routing_crs(payload), always_xy=True).transform
+    guides = unary_union([transform(to_metric, LineString([origin, (center.x, center.y)])) for origin in origins])
+    corridor = guides.buffer(5000).union(transform(to_metric, area).buffer(5000))
+    return [zone for zone in zones if corridor.intersects(transform(to_metric, shape(zone["geometry"])))]
+
+
+def _missed_settlement_zones(
+    payload: MissionRequest, result: dict, zones: list[dict], included_ids: set[str],
+) -> list[dict]:
+    remaining = [zone for zone in zones if zone["id"] not in included_ids]
+    if not remaining:
+        return []
+    to_metric = Transformer.from_crs("EPSG:4326", _settlement_routing_crs(payload), always_xy=True).transform
+    routes = [
+        transform(to_metric, shape(vehicle["route"]))
+        for plan in result.get("plans", []) for vehicle in plan.get("vehicles", [])
+    ]
+    return [
+        zone for zone in remaining
+        if any(route.distance(transform(to_metric, shape(zone["geometry"]))) <= payload.settlement_clearance_m + 1
+               for route in routes)
+    ]
 
 
 def _parse_bbox(value: str | None) -> list[float] | None:
@@ -1114,8 +1186,23 @@ async def optimize_mission(
             'launch_site_name': planned_site.name,
         })
     zones = await _all_airspace_zones(request)
+    all_settlements = _settlement_zones_for_planning(payload, request.app.state.settlements)
+    included_settlements = _initial_settlement_zones(payload, all_settlements)
+    zones.extend(included_settlements)
     try:
         result = await asyncio.to_thread(optimize, payload, zones)
+        missing = _missed_settlement_zones(
+            payload, result, all_settlements, {zone["id"] for zone in included_settlements},
+        )
+        if missing:
+            included_settlements.extend(missing)
+            zones.extend(missing)
+            result = await asyncio.to_thread(optimize, payload, zones)
+            remaining = _missed_settlement_zones(
+                payload, result, all_settlements, {zone["id"] for zone in included_settlements},
+            )
+            if remaining:
+                raise HTTPException(status_code=422, detail="Маршрут после обхода вышел к новым границам населённых пунктов. Уточните территорию или точку взлёта; непроверенный маршрут не выдаётся.")
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     routing_ms = round((time.perf_counter() - started) * 1000)
