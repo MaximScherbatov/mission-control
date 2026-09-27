@@ -9,8 +9,8 @@ import { ObjectsWorkspace } from './ObjectsWorkspace'
 import type { LaunchSite } from './LaunchSitesWorkspace'
 import { AttitudeIndicator } from './AttitudeIndicator'
 import { HeadingIndicator } from './HeadingIndicator'
-import { availableUavIds, fleetResourceSnapshot, initialScheduledMissions, localDateIso, slotStart, type ScheduledMission } from './scheduleData'
-import { replayTelemetry, replayTrail, sampleReplay } from './replay'
+import { availableUavIds, fleetResourceSnapshot, initialScheduledMissions, localDateIso, slotStart, type ReplayMissionData, type ScheduledMission } from './scheduleData'
+import { replayDurationSeconds, replayTelemetry, replayTrail, sampleReplay } from './replay'
 import './revision.css'
 import { payloadReferences, technologyContent } from './catalogContent'
 import {
@@ -1240,7 +1240,7 @@ function FleetTelemetryPanel({ items, selectedId, onSelect, demoMode, contextLab
 }
 
 function ReplayControls({mission,playback,contextCount,onChange,onClose}:{mission:ScheduledMission;playback:PlaybackState;contextCount:number;onChange:(next:PlaybackState)=>void;onClose:()=>void}){
-  const duration=mission.simulation?.durationSeconds||1
+  const duration=mission.simulation?replayDurationSeconds(mission.simulation):1
   const sample=mission.simulation?sampleReplay(mission.simulation,playback.cursor):null
   const time=(seconds:number)=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(Math.floor(seconds%60)).padStart(2,'0')}`
   return <section className={`replay-controls ${playback.mode}`} aria-label="Управление просмотром полёта">
@@ -1754,6 +1754,7 @@ export default function App() {
     const entries=plan.vehicles.map((vehicle,index)=>{
       const uav=catalogUavs.find(item=>item.id===vehicle.uav_id)
       const simulation={missionId:result.mission_id,planId:plan.id,route:vehicle.route,area:area.geometry.type==='Polygon'?area.geometry:undefined,uavType:(uav?.type==='fixed_wing'?'fixed_wing':'multirotor') as 'fixed_wing'|'multirotor',altitudeM:vehicle.altitude_m,color:vehicle.color,baseName:vehicle.base_name,durationSeconds:150,actualDurationMin:vehicle.elapsed_time_min,settlementCoverage:result.settlement_assessments?.[plan.id]?.status}
+      simulation.durationSeconds=replayDurationSeconds(simulation)
       return {date:scheduledDate,time:scheduledTime,title:`${linkedOrder?.title||product.title}${plan.vehicles.length>1?` · сектор ${index+1}/${plan.vehicles.length}`:''}`,location:linkedOrder?.location||'Контур задания',uavId:vehicle.uav_id,uavName:vehicle.uav_name,duration:Number((vehicle.elapsed_time_min/60).toFixed(2)),status:'planned' as const,product:selectedProducts.map(id=>missionProducts[id].short).join(' + '),payloadId:selectedPayloadId,areaKm2:Math.max(0.01,Number((areaMetrics.areaKm2/plan.vehicles.length).toFixed(2))),costRub:Math.round(vehicle.cost_rub),source:'planner' as const,orderId:linkedOrder?.id,orderNumber:linkedOrder?.number,customerName:linkedOrder?.customer.name,missionGroupId,simulation}
     })
     let missions:ScheduledMission[]
@@ -1788,7 +1789,7 @@ export default function App() {
     if(!mission.simulation)return
     const existing=playback?.missionId===mission.id?playback.cursor:0
     const mode=mission.status==='active'?'live':mission.status==='planned'?'simulation':'replay'
-    setPlayback({missionId:mission.id,mode,cursor:existing,playing:true,rate:mode==='live'?4:1})
+    setPlayback({missionId:mission.id,mode,cursor:existing,playing:true,rate:1})
     setDemoMode(false);setSelectedUavId(mission.uavId);setSimulationRate(0);setView('operations');setCatalogSection(null)
   }
 
@@ -1812,8 +1813,8 @@ export default function App() {
     if(!playback?.playing)return
     const timer=window.setInterval(()=>setPlayback(current=>{
       if(!current?.playing)return current
-      const mission=scheduledMissions.find(item=>item.id===current.missionId)
-      const duration=mission?.simulation?.durationSeconds||150
+      const mission=replayableMissions.find(item=>item.id===current.missionId)
+      const duration=mission?.simulation?replayDurationSeconds(mission.simulation):1
       const cursor=Math.min(duration,current.cursor+.2*current.rate)
       return{...current,cursor,playing:cursor<duration}
     }),200)
@@ -1822,8 +1823,8 @@ export default function App() {
 
   useEffect(()=>{
     if(!playback||playback.mode!=='live')return
-    const mission=scheduledMissions.find(item=>item.id===playback.missionId)
-    if(!mission||mission.status!=='active'||playback.cursor<(mission.simulation?.durationSeconds||150)||completingMissionRef.current===mission.id)return
+    const mission=replayableMissions.find(item=>item.id===playback.missionId)
+    if(!mission||mission.status!=='active'||playback.cursor<(mission.simulation?replayDurationSeconds(mission.simulation):1)||completingMissionRef.current===mission.id)return
     completingMissionRef.current=mission.id
     updateScheduledMission(mission,{status:'completed',demoStartedAt:mission.demoStartedAt,demoCompletedAt:new Date().toISOString()}).then(()=>{
       setPlayback(current=>current?.missionId===mission.id?{...current,mode:'replay',playing:false}:current)
@@ -1864,11 +1865,12 @@ export default function App() {
     const coordinates=features.flatMap(feature=>feature.geometry.type==='LineString'?feature.geometry.coordinates:feature.geometry.coordinates.flat())
     if(coordinates.length<2)return mission
     const uav=catalogUavs.find(item=>item.id===mission.uavId)
-    return{...mission,simulation:{missionId:`reconstructed-${mission.id}`,planId:'historical',route:{type:'LineString' as const,coordinates},uavType:(uav?.type==='fixed_wing'?'fixed_wing':'multirotor') as 'fixed_wing'|'multirotor',altitudeM:uav?.type==='fixed_wing'?145:90,color:String(features[0]?.properties?.color||'#42bdd8'),baseName:mission.location,durationSeconds:150,actualDurationMin:Math.round(mission.duration*60),reconstructed:true}}
+    const simulation:ReplayMissionData={missionId:`reconstructed-${mission.id}`,planId:'historical',route:{type:'LineString' as const,coordinates},uavType:(uav?.type==='fixed_wing'?'fixed_wing':'multirotor') as 'fixed_wing'|'multirotor',altitudeM:uav?.type==='fixed_wing'?145:90,color:String(features[0]?.properties?.color||'#42bdd8'),baseName:mission.location,durationSeconds:150,actualDurationMin:Math.round(mission.duration*60),reconstructed:true}
+    simulation.durationSeconds=replayDurationSeconds(simulation)
+    return{...mission,simulation}
   })
   const playbackMission=playback?replayableMissions.find(item=>item.id===playback.missionId):undefined
-  const playbackProgress=playback&&playbackMission?.simulation?Math.min(1,playback.cursor/playbackMission.simulation.durationSeconds):0
-  const sceneTime=playback&&playbackMission?slotStart(playbackMission.date,playbackMission.time)+playbackProgress*playbackMission.duration*3_600_000:calendarClock
+  const sceneTime=playback&&playbackMission?slotStart(playbackMission.date,playbackMission.time)+playback.cursor*1000:calendarClock
   const calendarScene=(!demoMode||playback)?replayableMissions.filter(mission=>{
     if(!mission.simulation||mission.status==='maintenance')return false
     const start=slotStart(mission.date,mission.time)
@@ -1876,9 +1878,9 @@ export default function App() {
   }):[]
   if(playbackMission?.simulation&&!calendarScene.some(mission=>mission.id===playbackMission.id))calendarScene.push(playbackMission)
   const sceneSamples=calendarScene.map(mission=>{
-    const start=slotStart(mission.date,mission.time),duration=Math.max(1,mission.duration*3_600_000)
-    const progress=Math.max(0,Math.min(1,(sceneTime-start)/duration))
-    const cursor=progress*(mission.simulation?.durationSeconds||1)
+    const start=slotStart(mission.date,mission.time)
+    const cursor=Math.max(0,(sceneTime-start)/1000)
+    const progress=mission.simulation?sampleReplay(mission.simulation,cursor).progress:0
     return{mission,progress,telemetry:replayTelemetry(mission,cursor,playback?.rate||1) as Telemetry}
   })
   const displayedTelemetry=demoMode&&!playback?telemetry:sceneSamples.map(item=>item.telemetry)
